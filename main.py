@@ -33,6 +33,24 @@ from chat_session import ChatSession, State
 # Lazy import for gemini_client (avoid gRPC import issues)
 generate_reply = None
 
+# Rate limiter: max 1 Gemini request at a time, min 4s between requests
+_gemini_semaphore = asyncio.Semaphore(1)
+_gemini_last_call = 0.0
+_GEMINI_MIN_INTERVAL = 4.0  # seconds between requests
+
+
+async def call_gemini(history: list, current_time: str) -> list:
+    """Wrapper around generate_reply with rate limiting."""
+    global _gemini_last_call
+    async with _gemini_semaphore:
+        now = asyncio.get_event_loop().time()
+        wait = _GEMINI_MIN_INTERVAL - (now - _gemini_last_call)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        result = generate_reply(history, current_time)
+        _gemini_last_call = asyncio.get_event_loop().time()
+        return result
+
 # Setup logging (prevent duplicate handlers)
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -213,7 +231,7 @@ async def handle_message(client: Client, message):
         set_state(State.CHATTING, "match received, starting chat")
         session.add_message("user", text)
 
-        bubbles = generate_reply(session.get_history(), get_wib_time())
+        bubbles = await call_gemini(session.get_history(), get_wib_time())
         if bubbles:
             for bubble in bubbles:
                 session.add_message("model", bubble)
@@ -237,7 +255,7 @@ async def handle_message(client: Client, message):
         # Normal chat flow
         session.add_message("user", text)
 
-        bubbles = generate_reply(session.get_history(), get_wib_time())
+        bubbles = await call_gemini(session.get_history(), get_wib_time())
         if bubbles:
             for bubble in bubbles:
                 session.add_message("model", bubble)
