@@ -45,7 +45,7 @@ def warm_up_persona() -> bool:
             )],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
-                automatic_function_calling=False,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
         summary = response.text.strip()
@@ -92,7 +92,7 @@ def generate_reply(history: list, current_time: str) -> list[str]:
             contents=gemini_contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_with_context,
-                automatic_function_calling=False,  # Disable AFC to prevent deadline conflicts
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),  # Disable AFC to prevent deadline conflicts
             ),
         )
 
@@ -119,7 +119,7 @@ def generate_reply(history: list, current_time: str) -> list[str]:
                     contents=gemini_contents,
                     config=types.GenerateContentConfig(
                         system_instruction=system_with_context,
-                        automatic_function_calling=False,
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                     ),
                 )
                 bubbles = [
