@@ -21,6 +21,7 @@ class ChatSession:
         """Inisialisasi session baru"""
         self.state = State.IDLE
         self.history = []
+        self.current_bot = None  # Username bot anon yang sedang aktif
         logger.info("✓ New ChatSession created")
 
     def add_message(self, role: str, content: str):
@@ -48,6 +49,7 @@ class ChatSession:
         """Reset session — clear history dan kembalikan state ke IDLE"""
         self.history = []
         self.state = State.IDLE
+        self.current_bot = None
         logger.info("✓ ChatSession reset")
 
 

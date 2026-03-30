@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 from config import (
-    API_ID, API_HASH, ANON_BOT_USERNAME,
+    API_ID, API_HASH, ANON_BOT_USERNAMES,
     TYPING_DELAY_MIN, TYPING_DELAY_MAX,
     BUBBLE_DELAY_MIN, BUBBLE_DELAY_MAX,
     GENDER_ASK_DELAY, LOG_LEVEL, LOG_FORMAT
@@ -158,18 +158,27 @@ def is_welcome_message(text: str) -> bool:
     return "/search" in text and "/next" in text
 
 
-@app.on_message(filters.user(ANON_BOT_USERNAME) & filters.text)
+@app.on_message(filters.text)
 async def handle_message(client: Client, message):
     """
     Main message handler for anonymous chat bot.
     Implements state machine for bot workflow.
+    Supports multiple anonymous chat bots.
     """
     global session
+
+    # Check if message is from one of the allowed anon bots
+    sender = message.from_user.username if message.from_user else None
+    if not ANON_BOT_USERNAMES or sender not in ANON_BOT_USERNAMES:
+        return
+
+    # Track which bot this conversation is with
+    session.current_bot = sender
 
     text = message.text
     chat_id = message.chat.id
 
-    logger.debug("[%s] Received: %s", session.state.value, text[:80])
+    logger.debug("[%s] Received from @%s: %s", session.state.value, sender, text[:80])
 
     # STATE: IDLE -> WAITING_MATCH
     if session.state == State.IDLE:
@@ -266,18 +275,25 @@ async def main():
 
     async with app:
         logger.info("✓ Bot started!")
-        logger.info(f"Bot username: @{ANON_BOT_USERNAME}")
+        logger.info(f"Connected bots: {', '.join(f'@{b}' for b in ANON_BOT_USERNAMES)}")
         logger.info(f"API ID: {API_ID}")
 
         try:
-            # Get the anonymous chat bot
-            anon_chat = await app.get_chat(ANON_BOT_USERNAME)
-            logger.info(f"✓ Found anon bot: {anon_chat.first_name or ANON_BOT_USERNAME}")
+            # Send initial /next to all anonymous chat bots to start searching
+            for idx, bot_username in enumerate(ANON_BOT_USERNAMES, 1):
+                try:
+                    # Add delay between sending /next to different bots
+                    if idx > 1:
+                        await asyncio.sleep(random.uniform(1, 2))
 
-            # Send initial /next to start searching
-            await app.send_message(anon_chat.id, "/next")
-            set_state(State.WAITING_MATCH, "initial startup /next sent")
-            logger.info("✓ Sent /next → waiting for match...")
+                    anon_chat = await app.get_chat(bot_username)
+                    await app.send_message(anon_chat.id, "/next")
+                    logger.info(f"✓ Sent /next to @{bot_username}")
+                except Exception as e:
+                    logger.warning(f"Failed to send /next to @{bot_username}: {e}")
+
+            set_state(State.WAITING_MATCH, "initial startup /next sent to all bots")
+            logger.info("✓ Initialized with all bots → waiting for matches...")
 
             # Keep bot running indefinitely
             await asyncio.Event().wait()

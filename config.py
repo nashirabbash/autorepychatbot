@@ -30,8 +30,14 @@ API_HASH = os.getenv("API_HASH", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.0-flash"
 
-# Anonymous bot
-ANON_BOT_USERNAME = os.getenv("ANON_BOT_USERNAME", "")
+# Multiple anonymous bots (comma-separated string converted to list)
+import logging
+_config_logger = logging.getLogger(__name__)
+_raw = os.getenv("ANON_BOT_USERNAMES", "")
+ANON_BOT_USERNAMES = [u.strip() for u in _raw.split(",") if u.strip()]
+
+if not ANON_BOT_USERNAMES:
+    _config_logger.warning("⚠️  ANON_BOT_USERNAMES not configured — bot will ignore all messages")
 
 # Timing delays (in seconds)
 TYPING_DELAY_MIN = _get_float_env("TYPING_DELAY_MIN", 2.0)
