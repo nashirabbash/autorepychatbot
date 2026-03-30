@@ -40,10 +40,10 @@ if not ANON_BOT_USERNAMES:
     _config_logger.warning("⚠️  ANON_BOT_USERNAMES not configured — bot will ignore all messages")
 
 # Timing delays (in seconds)
-TYPING_DELAY_MIN = _get_float_env("TYPING_DELAY_MIN", 2.0)
-TYPING_DELAY_MAX = _get_float_env("TYPING_DELAY_MAX", 8.0)
+TYPING_DELAY_MIN = _get_float_env("TYPING_DELAY_MIN", 1.0)
+TYPING_DELAY_MAX = _get_float_env("TYPING_DELAY_MAX", 3.0)
 BUBBLE_DELAY_MIN = _get_float_env("BUBBLE_DELAY_MIN", 0.5)
-BUBBLE_DELAY_MAX = _get_float_env("BUBBLE_DELAY_MAX", 1.5)
+BUBBLE_DELAY_MAX = _get_float_env("BUBBLE_DELAY_MAX", 1.0)
 GENDER_ASK_DELAY = _get_float_env("GENDER_ASK_DELAY", 2.0)
 
 # History management

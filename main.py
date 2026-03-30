@@ -36,7 +36,7 @@ generate_reply = None
 # Rate limiter: max 1 Gemini request at a time, min 4s between requests
 _gemini_semaphore = asyncio.Semaphore(1)
 _gemini_last_call = 0.0
-_GEMINI_MIN_INTERVAL = 4.0  # seconds between requests
+_GEMINI_MIN_INTERVAL = 2.0  # seconds between requests
 
 
 async def call_gemini(history: list, current_time: str) -> list:
