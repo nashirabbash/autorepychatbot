@@ -121,7 +121,7 @@ async def send_bubbles(client: Client, chat_id: int, bubbles: list):
 
 def detect_gender(text: str) -> str | None:
     """
-    Detect gender from user response (fuzzy matching).
+    Detect gender from user response (fuzzy matching, handles typos/spaces).
 
     Args:
         text: User message
@@ -129,7 +129,10 @@ def detect_gender(text: str) -> str | None:
     Returns:
         "female", "male", or None if unclear
     """
+    import re
     t = text.strip().lower()
+    # Remove punctuation and extra spaces
+    t_clean = re.sub(r'[^\w\s]', '', t).strip()
 
     female_keywords = [
         "f", "ce", "cewe", "cewek", "female",
@@ -140,10 +143,19 @@ def detect_gender(text: str) -> str | None:
         "lk", "laki", "pria", "boy", "man"
     ]
 
-    if t in female_keywords:
+    # Exact match
+    if t_clean in female_keywords:
         return "female"
-    if t in male_keywords:
+    if t_clean in male_keywords:
         return "male"
+
+    # Check word boundaries - any word in message matches keyword
+    words = t_clean.split()
+    for word in words:
+        if word in female_keywords:
+            return "female"
+        if word in male_keywords:
+            return "male"
 
     return None
 
@@ -255,9 +267,9 @@ async def handle_message(client: Client, message):
 
         if is_welcome_message(text):
             logger.info("Match found → sending opener immediately")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "hii")
             await asyncio.sleep(random.uniform(0.5, 1))
+            await client.send_message(chat_id, "hii")
+            await asyncio.sleep(random.uniform(0.2, 0.5))
             await client.send_message(chat_id, "co ce?")
             set_state(State.WAITING_GENDER, "welcome detected, opener + gender prompt sent")
             return
