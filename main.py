@@ -185,17 +185,33 @@ def is_gender_question(text: str) -> bool:
     return t in variants
 
 
+def is_system_message(text: str) -> bool:
+    """Check if message is a system message (not from stranger)."""
+    t = text.lower()
+    system_keywords = [
+        "sedang mencari", "searching", "mencari obrolan",
+        "maaf anda tidak", "tidak dalam obrolan",
+        "telah meninggalkan", "disconnected", "obrolan berakhir",
+        "/next", "/search", "/stop"
+    ]
+    return any(kw in t for kw in system_keywords)
+
+
 def is_welcome_message(text: str) -> bool:
     """
-    Check if message is the welcome message from anon bot.
+    Check if message indicates a successful match (welcome to stranger).
 
     Args:
         text: Message text
 
     Returns:
-        True if welcome message detected, False otherwise
+        True if welcome message (match found), False otherwise
     """
-    return "/search" in text and "/next" in text
+    t = text.lower()
+    # Match found indicators
+    return ("pasangan telah ditemukan" in t or "match found" in t or
+            "you have been matched" in t or "orang baru" in t) and \
+           ("/next" in t or "/search" in t)
 
 
 @app.on_message(filters.text)
@@ -232,6 +248,11 @@ async def handle_message(client: Client, message):
 
     # STATE: WAITING_MATCH
     if session.state == State.WAITING_MATCH:
+        # Ignore system messages (searching, not in chat, etc)
+        if is_system_message(text):
+            logger.debug("System message, ignoring")
+            return
+
         if is_welcome_message(text):
             logger.info("Match found → sending opener immediately")
             await asyncio.sleep(random.uniform(1, 2))
@@ -242,7 +263,6 @@ async def handle_message(client: Client, message):
             return
 
         if is_gender_question(text):
-            # Stranger tanya gender duluan → jawab "co" lalu tanya balik
             logger.info("Stranger asked gender first → replying co, asking back")
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "co")
@@ -252,7 +272,6 @@ async def handle_message(client: Client, message):
             return
 
         if is_greeting(text):
-            # Stranger sapaan duluan → balas sapaan dulu, lalu tanya gender
             logger.info("Stranger greeted first → replying greeting then asking gender")
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "hii")
@@ -261,7 +280,6 @@ async def handle_message(client: Client, message):
             set_state(State.WAITING_GENDER, "stranger greeted, gender prompt sent")
             return
 
-        # Pesan lain (stranger langsung chat) → treat as first message, ask gender
         logger.info("Stranger sent first message → asking gender")
         await asyncio.sleep(random.uniform(0.5, 1))
         await client.send_message(chat_id, "co ce?")
