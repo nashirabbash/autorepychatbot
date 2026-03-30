@@ -171,6 +171,20 @@ def is_disconnect_message(text: str) -> bool:
     return any(kw in text_lower for kw in disconnect_keywords)
 
 
+def is_greeting(text: str) -> bool:
+    """Check if stranger sends a greeting first."""
+    t = text.strip().lower()
+    greetings = ["hi", "hii", "hiii", "hey", "halo", "hai", "hello", "helo", "haloo"]
+    return any(t.startswith(g) for g in greetings)
+
+
+def is_gender_question(text: str) -> bool:
+    """Check if stranger is asking for gender (ceco, co ce, ce co, etc.)"""
+    t = text.strip().lower().replace(" ", "").replace("?", "").replace(".", "")
+    variants = ["ceco", "coce", "mf", "fm", "cowokcewe", "cewecowok"]
+    return t in variants
+
+
 def is_welcome_message(text: str) -> bool:
     """
     Check if message is the welcome message from anon bot.
@@ -209,23 +223,45 @@ async def handle_message(client: Client, message):
     text = message.text
     chat_id = message.chat.id
 
-    logger.debug("[%s] Received from @%s: %s", session.state.value, sender, text[:80])
-
-    # STATE: IDLE -> WAITING_MATCH
+    # STATE: IDLE → ignore
     if session.state == State.IDLE:
-        logger.debug("State is IDLE, skipping message")
         return
 
-    # STATE: WAITING_MATCH → match detected, ask gender
+    # Log semua pesan lawan bicara
+    logger.info("[%s] Stranger: %s", session.state.value, text[:120])
+
+    # STATE: WAITING_MATCH
     if session.state == State.WAITING_MATCH:
-        if not is_welcome_message(text):
-            logger.debug("Not a welcome message yet, ignoring")
+        if is_welcome_message(text):
+            # Bot system message → kita yang tanya gender duluan
+            logger.info("Match found → asking gender")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "co ce?")
+            set_state(State.WAITING_GENDER, "welcome detected, gender prompt sent")
             return
 
-        logger.info("Match found → asking gender")
-        await asyncio.sleep(random.uniform(1, 2))
-        await client.send_message(chat_id, "co ce?")
-        set_state(State.WAITING_GENDER, "match detected, gender prompt sent")
+        if is_gender_question(text):
+            # Stranger tanya gender duluan → jawab "co" lalu tanya balik
+            logger.info("Stranger asked gender first → replying co, asking back")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "co")
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            await client.send_message(chat_id, "kamu?")
+            set_state(State.WAITING_GENDER, "stranger asked gender, waiting reply")
+            return
+
+        if is_greeting(text):
+            # Stranger sapaan duluan → balas sapaan dulu, lalu tanya gender
+            logger.info("Stranger greeted first → replying greeting then asking gender")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "hii")
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            await client.send_message(chat_id, "co ce?")
+            set_state(State.WAITING_GENDER, "stranger greeted, gender prompt sent")
+            return
+
+        # Pesan lain saat waiting match → ignore
+        logger.debug("Ignoring non-welcome message in WAITING_MATCH")
         return
 
     # STATE: WAITING_GENDER → route based on gender
@@ -248,7 +284,6 @@ async def handle_message(client: Client, message):
             opener = "hii"
             await client.send_message(chat_id, opener)
             session.add_message("model", opener)
-            # Don't call Gemini yet — wait for stranger's next message
             return
 
         # Gender unclear → keep waiting
@@ -267,7 +302,7 @@ async def handle_message(client: Client, message):
             set_state_from(old_state, State.WAITING_MATCH, "disconnect detected")
             return
 
-        # Normal chat flow
+        # Stranger message → add to history as context, then generate reply
         session.add_message("user", text)
 
         bubbles = await call_gemini(session.get_history(), get_wib_time())
