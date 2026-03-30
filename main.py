@@ -322,7 +322,7 @@ async def handle_message(client: Client, message):
     # Log semua pesan lawan bicara
     logger.info("[%s] Stranger: %s", session.state.value, text[:120])
 
-    # STATE: WAITING_MATCH — only pass real stranger messages to Gemini
+    # STATE: WAITING_MATCH — handle greeting and gender detection without pooling
     if session.state == State.WAITING_MATCH:
         # Check disconnect FIRST before other system message checks
         if is_disconnect_message(text):
@@ -338,22 +338,48 @@ async def handle_message(client: Client, message):
             logger.debug("System/feedback message, ignoring")
             return
 
-        # Welcome message or any real stranger message → enter CHATTING and send opening message
-        logger.info("Match/stranger detected → entering CHATTING mode")
-        set_state(State.CHATTING, "stranger message received")
+        # Check if this is the welcome message (match found)
+        if is_welcome_message(text):
+            logger.info("✓ Match found → sending greeting 'hii'")
+            await send_with_delay(client, chat_id, "hii")
+            session.add_message("model", "hii")
+            return
 
-        # Send opening message (topik seru) - 1 bubble only
-        opening_bubbles = await call_gemini([{"role": "user", "content": "Mulai chat. Kirim topik seru yang bisa dibuat kekasih marah, 1 bullet point saja."}], get_wib_time())
-        opening_bubbles = opening_bubbles[:1]  # Only 1 bubble for opening
-        if opening_bubbles:
-            for bubble in opening_bubbles:
+        # Stranger responded to greeting → detect gender and send opener without pooling
+        logger.info("Stranger response received → gender detection + opening (no pooling)")
+
+        # Pass to Gemini: detect gender and generate opening message
+        # Persona should output: gender_confirmation (co/ce) + topik seru on separate lines
+        session.add_message("user", text)
+        bubbles = await call_gemini(session.get_history(), get_wib_time())
+
+        # Handle the response
+        skip = any(b.strip() == "[SKIP]" for b in bubbles)
+        real_bubbles = [b for b in bubbles if b.strip() != "[SKIP]"]
+
+        if skip:
+            # Male detected → send /next
+            logger.info("♂️  Male detected → sending /next")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "/next")
+            old_state = session.state
+            session.last_action = "next"
+            session.reset()
+            set_state_from(old_state, State.WAITING_MATCH, "male detected by Gemini")
+            return
+
+        # Female detected → send confirmation + opener, then activate pooling
+        if real_bubbles:
+            logger.info(f"♀️  Female detected → sending {len(real_bubbles)} bubbles (gender confirmation + topik seru)")
+            for bubble in real_bubbles:
                 session.add_message("model", bubble)
-            await send_bubbles(client, chat_id, opening_bubbles)
+            await send_bubbles(client, chat_id, real_bubbles)
 
-        # Initialize batch processing timer
+        # Transition to CHATTING with pooling enabled
+        set_state(State.CHATTING, "gender confirmed, pooling activated")
         session.last_message_batch_time = time.time()
         session.pending_messages = []
-        logger.info(f"✓ Opening message sent. Will batch next messages for {CHAT_POLLING_INTERVAL}s")
+        logger.info(f"✓ Pooling activated. Will batch messages for {CHAT_POLLING_INTERVAL}s")
         return
 
     # STATE: CHATTING — Buffer messages and process in batches every CHAT_POLLING_INTERVAL
