@@ -320,6 +320,22 @@ async def handle_message(client: Client, message):
 
     # STATE: WAITING_GENDER → route based on gender
     if session.state == State.WAITING_GENDER:
+        # Check for disconnect (partner stopped before answering gender)
+        if is_disconnect_message(text):
+            logger.info("Partner stopped in WAITING_GENDER → sending /search")
+            old_state = session.state
+            session.last_action = "search"
+            session.reset()
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "/search")
+            set_state_from(old_state, State.WAITING_MATCH, "partner disconnected in waiting_gender")
+            return
+
+        # Check for feedback prompt
+        if is_feedback_prompt(text):
+            logger.info("Feedback prompt in WAITING_GENDER, ignoring")
+            return
+
         gender = detect_gender(text)
 
         if gender == "male":
