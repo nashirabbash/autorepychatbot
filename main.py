@@ -42,6 +42,35 @@ async def call_gemini(history: list, current_time: str) -> list:
     async with _gemini_semaphore:
         return generate_reply(history, current_time)
 
+
+async def _handle_bubbles(client: Client, chat_id: int, bubbles: list):
+    """
+    Send bubbles to chat. If Gemini returns [SKIP], send /next instead.
+    [SKIP] token means Gemini detected male stranger.
+    """
+    if not bubbles:
+        logger.warning("Gemini returned empty, skipping reply")
+        return
+
+    skip = any(b.strip() == "[SKIP]" for b in bubbles)
+    real_bubbles = [b for b in bubbles if b.strip() != "[SKIP]"]
+
+    # Send real bubbles first
+    if real_bubbles:
+        for bubble in real_bubbles:
+            session.add_message("model", bubble)
+        await send_bubbles(client, chat_id, real_bubbles)
+
+    # If [SKIP] detected, send /next
+    if skip:
+        logger.info("Gemini detected male → sending /next")
+        await asyncio.sleep(random.uniform(1, 2))
+        await client.send_message(chat_id, "/next")
+        old_state = session.state
+        session.last_action = "next"
+        session.reset()
+        set_state_from(old_state, State.WAITING_MATCH, "male detected by Gemini")
+
 # Setup logging (prevent duplicate handlers)
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -273,104 +302,37 @@ async def handle_message(client: Client, message):
     # Log semua pesan lawan bicara
     logger.info("[%s] Stranger: %s", session.state.value, text[:120])
 
-    # STATE: WAITING_MATCH
+    # STATE: WAITING_MATCH — only pass real stranger messages to Gemini
     if session.state == State.WAITING_MATCH:
-        # Ignore system messages (searching, not in chat, etc)
-        if is_system_message(text):
-            logger.debug("System message, ignoring")
+        if is_system_message(text) or is_feedback_prompt(text):
+            logger.debug("System/feedback message, ignoring")
             return
 
-        # Ignore feedback prompt (already sent /next or /search)
-        if is_feedback_prompt(text):
-            logger.debug("Feedback prompt after /next or /search, ignoring")
-            return
-
-        if is_welcome_message(text):
-            logger.info("Match found → sending opener immediately")
-            await asyncio.sleep(random.uniform(0.5, 1))
-            await client.send_message(chat_id, "hii")
-            await asyncio.sleep(random.uniform(0.2, 0.5))
-            await client.send_message(chat_id, "co ce?")
-            set_state(State.WAITING_GENDER, "welcome detected, opener + gender prompt sent")
-            return
-
-        if is_gender_question(text):
-            logger.info("Stranger asked gender first → replying co, asking back")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "co")
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            await client.send_message(chat_id, "kamu?")
-            set_state(State.WAITING_GENDER, "stranger asked gender, waiting reply")
-            return
-
-        if is_greeting(text):
-            logger.info("Stranger greeted first → replying greeting then asking gender")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "hii")
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            await client.send_message(chat_id, "co ce?")
-            set_state(State.WAITING_GENDER, "stranger greeted, gender prompt sent")
-            return
-
-        logger.info("Stranger sent first message → asking gender")
-        await asyncio.sleep(random.uniform(0.5, 1))
-        await client.send_message(chat_id, "co ce?")
-        set_state(State.WAITING_GENDER, "stranger initiated, gender prompt sent")
-        return
-
-    # STATE: WAITING_GENDER → route based on gender
-    if session.state == State.WAITING_GENDER:
-        # Check for disconnect (partner stopped before answering gender)
         if is_disconnect_message(text):
-            logger.info("Partner stopped in WAITING_GENDER → sending /search")
+            logger.info("Disconnect in WAITING_MATCH → /search")
             old_state = session.state
-            session.last_action = "search"
             session.reset()
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "/search")
-            set_state_from(old_state, State.WAITING_MATCH, "partner disconnected in waiting_gender")
+            set_state_from(old_state, State.WAITING_MATCH, "disconnect in waiting_match")
             return
 
-        # Check for feedback prompt
-        if is_feedback_prompt(text):
-            logger.info("Feedback prompt in WAITING_GENDER, ignoring")
-            return
-
-        gender = detect_gender(text)
-
-        if gender == "male":
-            logger.info("Male detected → reply gender, send topic, then /next")
-            # Reply with our gender
-            await asyncio.sleep(random.uniform(0.5, 1))
-            await client.send_message(chat_id, "co")
-            # Send interesting topic before skipping
-            await asyncio.sleep(random.uniform(0.5, 1))
-            await client.send_message(chat_id, "oalah cowo jg wkwk")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "/next")
-            old_state = session.state
-            session.last_action = "next"
-            session.reset()
-            set_state_from(old_state, State.WAITING_MATCH, "male detected")
-            return
-
-        if gender == "female":
-            logger.info("Female → sending opener")
-            set_state(State.CHATTING, "female confirmed")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "hii")
-            session.add_message("model", "hii")
-            return
-
-        # Gender unclear → keep waiting
-        logger.debug("Gender unclear: %s", text)
+        # Welcome message or any real stranger message → hand off to Gemini
+        logger.info("Match/stranger detected → passing to Gemini")
+        set_state(State.CHATTING, "stranger message received")
+        session.add_message("user", text)
+        bubbles = await call_gemini(session.get_history(), get_wib_time())
+        await _handle_bubbles(client, chat_id, bubbles)
         return
 
-    # STATE: CHATTING
+    # STATE: CHATTING — Gemini handles everything including gender detection
     if session.state == State.CHATTING:
-        # Check for disconnect (partner stopped)
+        if is_system_message(text) or is_feedback_prompt(text):
+            logger.debug("System/feedback message, ignoring")
+            return
+
         if is_disconnect_message(text):
-            logger.info("Partner stopped → resetting and sending /search")
+            logger.info("Partner stopped → /search")
             old_state = session.state
             session.last_action = "search"
             session.reset()
@@ -379,23 +341,9 @@ async def handle_message(client: Client, message):
             set_state_from(old_state, State.WAITING_MATCH, "partner disconnected")
             return
 
-        # Check for feedback prompt
-        if is_feedback_prompt(text):
-            # Feedback prompt after /next → ignore
-            # Feedback prompt after /search → also ignore (already sent /search)
-            logger.info("Feedback prompt, ignoring")
-            return
-
-        # Stranger message → add to history as context, then generate reply
         session.add_message("user", text)
-
         bubbles = await call_gemini(session.get_history(), get_wib_time())
-        if bubbles:
-            for bubble in bubbles:
-                session.add_message("model", bubble)
-            await send_bubbles(client, chat_id, bubbles)
-        else:
-            logger.warning("Gemini returned empty, skipping reply")
+        await _handle_bubbles(client, chat_id, bubbles)
         return
 
 
