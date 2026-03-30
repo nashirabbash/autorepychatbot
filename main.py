@@ -182,6 +182,16 @@ def is_greeting(text: str) -> bool:
     return any(t.startswith(g) for g in greetings)
 
 
+def is_feedback_prompt(text: str) -> bool:
+    """
+    Check if message is feedback prompt from bot.
+    If appeared after /next → ignore.
+    If appeared after partner stop (before /search) → handle with /search.
+    """
+    t = text.lower()
+    return "feedback tentang pasangan" in t or "leave feedback" in t
+
+
 def is_gender_question(text: str) -> bool:
     """Check if stranger is asking for gender (ceco, co ce, ce co, etc.)"""
     t = text.strip().lower().replace(" ", "").replace("?", "").replace(".", "")
@@ -270,6 +280,11 @@ async def handle_message(client: Client, message):
             logger.debug("System message, ignoring")
             return
 
+        # Ignore feedback prompt (already sent /next or /search)
+        if is_feedback_prompt(text):
+            logger.debug("Feedback prompt after /next or /search, ignoring")
+            return
+
         if is_welcome_message(text):
             logger.info("Match found → sending opener immediately")
             await asyncio.sleep(random.uniform(0.5, 1))
@@ -310,6 +325,7 @@ async def handle_message(client: Client, message):
         if gender == "male":
             logger.info("Male → skipping, sending /next")
             old_state = session.state
+            session.last_action = "next"
             session.reset()
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "/next")
@@ -334,10 +350,18 @@ async def handle_message(client: Client, message):
         if is_disconnect_message(text):
             logger.info("Partner stopped → resetting and sending /search")
             old_state = session.state
+            session.last_action = "search"
             session.reset()
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "/search")
             set_state_from(old_state, State.WAITING_MATCH, "partner disconnected")
+            return
+
+        # Check for feedback prompt
+        if is_feedback_prompt(text):
+            # Feedback prompt after /next → ignore
+            # Feedback prompt after /search → also ignore (already sent /search)
+            logger.info("Feedback prompt, ignoring")
             return
 
         # Stranger message → add to history as context, then generate reply

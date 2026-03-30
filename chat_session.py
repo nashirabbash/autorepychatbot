@@ -22,6 +22,7 @@ class ChatSession:
         self.state = State.IDLE
         self.history = []
         self.current_bot = None  # Username bot anon yang sedang aktif
+        self.last_action = None  # Track last action: "next" atau "search"
         logger.info("✓ New ChatSession created")
 
     def add_message(self, role: str, content: str):
