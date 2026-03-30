@@ -233,11 +233,12 @@ async def handle_message(client: Client, message):
     # STATE: WAITING_MATCH
     if session.state == State.WAITING_MATCH:
         if is_welcome_message(text):
-            # Bot system message → kita yang tanya gender duluan
-            logger.info("Match found → asking gender")
-            await asyncio.sleep(random.uniform(1, 2))
+            logger.info("Match found → sending opener after delay")
+            await asyncio.sleep(5)
+            await client.send_message(chat_id, "hii")
+            await asyncio.sleep(random.uniform(0.5, 1.5))
             await client.send_message(chat_id, "co ce?")
-            set_state(State.WAITING_GENDER, "welcome detected, gender prompt sent")
+            set_state(State.WAITING_GENDER, "welcome detected, opener + gender prompt sent")
             return
 
         if is_gender_question(text):
@@ -278,12 +279,8 @@ async def handle_message(client: Client, message):
             return
 
         if gender == "female":
-            logger.info("Female → sending opener, waiting for stranger to reply")
+            logger.info("Female → starting chat, waiting for stranger to reply")
             set_state(State.CHATTING, "female confirmed")
-            await asyncio.sleep(random.uniform(1, 2))
-            opener = "hii"
-            await client.send_message(chat_id, opener)
-            session.add_message("model", opener)
             return
 
         # Gender unclear → keep waiting
