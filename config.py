@@ -16,11 +16,15 @@ GEMINI_MODEL = "gemini-2.0-flash"
 ANON_BOT_USERNAME = os.getenv("ANON_BOT_USERNAME", "")
 
 # Timing delays (in seconds)
-TYPING_DELAY_MIN = 2.0
-TYPING_DELAY_MAX = 8.0
-BUBBLE_DELAY_MIN = 0.5
-BUBBLE_DELAY_MAX = 1.5
-GENDER_ASK_DELAY = 2.0
+TYPING_DELAY_MIN = float(os.getenv("TYPING_DELAY_MIN", "2.0"))
+TYPING_DELAY_MAX = float(os.getenv("TYPING_DELAY_MAX", "8.0"))
+BUBBLE_DELAY_MIN = float(os.getenv("BUBBLE_DELAY_MIN", "0.5"))
+BUBBLE_DELAY_MAX = float(os.getenv("BUBBLE_DELAY_MAX", "1.5"))
+GENDER_ASK_DELAY = float(os.getenv("GENDER_ASK_DELAY", "2.0"))
 
 # History management
-MAX_HISTORY = 20
+MAX_HISTORY = int(os.getenv("MAX_HISTORY", "20"))
+
+# Logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
