@@ -15,8 +15,12 @@ except FileNotFoundError:
     logger.error("❌ persona.txt not found!")
     SYSTEM_PROMPT = ""
 
-# Initialize Gemini client (uses HTTP, no gRPC)
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize Gemini client with 20-minute timeout for long user response delays
+# Set timeout at client level to avoid "deadline too short" errors
+client = genai.Client(
+    api_key=GEMINI_API_KEY,
+    http_options=types.HttpOptions(timeout=1200.0)  # 20 minutes
+)
 
 
 def warm_up_persona() -> bool:
@@ -43,7 +47,6 @@ def warm_up_persona() -> bool:
             )],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
-                http_options={"timeout": 1200.0},  # 20 minutes timeout
             ),
         )
         summary = response.text.strip()
@@ -90,7 +93,6 @@ def generate_reply(history: list, current_time: str) -> list[str]:
             contents=gemini_contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_with_context,
-                http_options={"timeout": 1200.0},  # 20 minutes timeout
             ),
         )
 
@@ -117,7 +119,6 @@ def generate_reply(history: list, current_time: str) -> list[str]:
                     contents=gemini_contents,
                     config=types.GenerateContentConfig(
                         system_instruction=system_with_context,
-                        http_options={"timeout": 1200.0},  # 20 minutes timeout
                     ),
                 )
                 bubbles = [
