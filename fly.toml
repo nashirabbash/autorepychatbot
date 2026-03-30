@@ -22,15 +22,8 @@ bot = "python main.py"
 # source = "bot_sessions"
 # destination = "/app"
 
-[[services]]
-processes = ["bot"]
-# Internal port (bot doesn't expose HTTP)
-protocol = "tcp"
-internal_port = 8080
-
-# Health check (bot doesn't have HTTP endpoint, so we skip health checks)
-[services.tcp_checks]
-enabled = false
+# Bot is a long-running process without exposed HTTP ports
+# No services configuration needed
 
 [env.variables]
 # Bot will read these from environment
