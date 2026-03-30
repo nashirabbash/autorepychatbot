@@ -193,13 +193,9 @@ def is_feedback_prompt(text: str) -> bool:
 
 
 def is_gender_question(text: str) -> bool:
-    """
-    Check if stranger is asking for our gender (kmu? hbu? kmu siapa? etc).
-    These are questions, not answers.
-    """
+    """Check if stranger is asking for gender (ceco, co ce, ce co, etc.)"""
     t = text.strip().lower().replace(" ", "").replace("?", "").replace(".", "")
-    # Questions about our gender (stranger asking)
-    variants = ["kmu", "hbu", "kmuapa", "kmusiapa", "km", "u", "siapa", "halo"]
+    variants = ["kmu?", "hbu?", "kmu siapa?", "co ce?", "coce?", "ceco?", "ce co?", "m f?", "mf?", "km?", "km", "u?"]
     return t in variants
 
 
@@ -343,12 +339,18 @@ async def handle_message(client: Client, message):
         gender = detect_gender(text)
 
         if gender == "male":
-            logger.info("Male → skipping, sending /next")
+            logger.info("Male detected → reply gender, send topic, then /next")
+            # Reply with our gender
+            await asyncio.sleep(random.uniform(0.5, 1))
+            await client.send_message(chat_id, "co")
+            # Send interesting topic before skipping
+            await asyncio.sleep(random.uniform(0.5, 1))
+            await client.send_message(chat_id, "oalah cowo jg wkwk")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "/next")
             old_state = session.state
             session.last_action = "next"
             session.reset()
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "/next")
             set_state_from(old_state, State.WAITING_MATCH, "male detected")
             return
 
