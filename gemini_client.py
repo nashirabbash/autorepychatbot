@@ -1,4 +1,5 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY
 import logging
 
@@ -13,8 +14,8 @@ except FileNotFoundError:
     logger.error("❌ persona.txt not found!")
     SYSTEM_PROMPT = ""
 
-# Configure Gemini API
-genai.configure(api_key=GEMINI_API_KEY)
+# Initialize Gemini client (uses HTTP, no gRPC)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def generate_reply(history: list, current_time: str) -> list[str]:
@@ -34,34 +35,28 @@ def generate_reply(history: list, current_time: str) -> list[str]:
             history = history[-MAX_HISTORY:]
 
         # Add time context to the last user message
-        if history and history[-1]["role"] == "user":
-            history_with_context = history.copy()
-            last_msg = history_with_context[-1]
+        history_with_context = history.copy()
+        if history_with_context and history_with_context[-1]["role"] == "user":
+            last_msg = dict(history_with_context[-1])
             last_msg["content"] = f"{last_msg['content']}\n\n[CONTEXT: Waktu sekarang {current_time} WIB.]"
-        else:
-            history_with_context = history
+            history_with_context[-1] = last_msg
 
-        # Convert to Gemini format
-        gemini_history = []
+        # Convert to Gemini SDK format
+        gemini_contents = []
         for item in history_with_context:
-            gemini_history.append({
-                "role": item["role"],
-                "parts": [{"text": item["content"]}]
-            })
+            role = "user" if item["role"] == "user" else "model"
+            gemini_contents.append(
+                types.Content(role=role, parts=[types.Part(text=item["content"])])
+            )
 
-        # Create model and start chat
-        model = genai.GenerativeModel(
-            model_name=GEMINI_MODEL,
-            system_instruction=SYSTEM_PROMPT
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=gemini_contents,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+            ),
         )
 
-        chat = model.start_chat(history=gemini_history[:-1] if gemini_history else [])
-
-        # Send the last message
-        last_message = gemini_history[-1]["parts"][0]["text"] if gemini_history else "hii"
-        response = chat.send_message(last_message)
-
-        # Parse response into chat bubbles
         reply_text = response.text
         bubbles = [line.strip() for line in reply_text.split("\n") if line.strip()]
 
@@ -74,7 +69,6 @@ def generate_reply(history: list, current_time: str) -> list[str]:
 
 
 if __name__ == "__main__":
-    # Test
     test_history = [
         {"role": "user", "content": "hii"},
         {"role": "model", "content": "hii"},
