@@ -225,19 +225,43 @@ async def handle_message(client: Client, message):
         logger.debug("State is IDLE, skipping message")
         return
 
-    # STATE: WAITING_MATCH → any message triggers conversation start
+    # STATE: WAITING_MATCH → match detected, ask gender
     if session.state == State.WAITING_MATCH:
-        logger.info("Match found, starting conversation → %s", text[:80])
-        set_state(State.CHATTING, "match received, starting chat")
-        session.add_message("user", text)
+        if not is_welcome_message(text):
+            logger.debug("Not a welcome message yet, ignoring")
+            return
 
-        bubbles = await call_gemini(session.get_history(), get_wib_time())
-        if bubbles:
-            for bubble in bubbles:
-                session.add_message("model", bubble)
-            await send_bubbles(client, chat_id, bubbles)
-        else:
-            logger.warning("Gemini returned empty, skipping reply")
+        logger.info("Match found → asking gender")
+        await asyncio.sleep(random.uniform(1, 2))
+        await client.send_message(chat_id, "co ce?")
+        set_state(State.WAITING_GENDER, "match detected, gender prompt sent")
+        return
+
+    # STATE: WAITING_GENDER → route based on gender
+    if session.state == State.WAITING_GENDER:
+        gender = detect_gender(text)
+
+        if gender == "male":
+            logger.info("Male → skipping, sending /next")
+            old_state = session.state
+            session.reset()
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "/next")
+            set_state_from(old_state, State.WAITING_MATCH, "male detected")
+            return
+
+        if gender == "female":
+            logger.info("Female → starting chat")
+            set_state(State.CHATTING, "female confirmed")
+            bubbles = await call_gemini(session.get_history(), get_wib_time())
+            if bubbles:
+                for bubble in bubbles:
+                    session.add_message("model", bubble)
+                await send_bubbles(client, chat_id, bubbles)
+            return
+
+        # Gender unclear → keep waiting
+        logger.debug("Gender unclear: %s", text)
         return
 
     # STATE: CHATTING
