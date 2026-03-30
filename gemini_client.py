@@ -2,6 +2,7 @@ from google import genai
 from google.genai import types
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +65,12 @@ def generate_reply(history: list, current_time: str) -> list[str]:
         return bubbles
 
     except Exception as e:
-        logger.error(f"❌ Gemini API error: {e}")
-        return ["..."]
+        err = str(e)
+        if "429" in err or "RESOURCE_EXHAUSTED" in err:
+            logger.warning("⚠️  Gemini rate limit hit, skipping reply")
+        else:
+            logger.error(f"❌ Gemini API error: {e}")
+        return []
 
 
 if __name__ == "__main__":

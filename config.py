@@ -28,7 +28,7 @@ API_HASH = os.getenv("API_HASH", "")
 
 # Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
 
 # Multiple anonymous bots (comma-separated string converted to list)
 import logging

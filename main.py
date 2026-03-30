@@ -26,7 +26,7 @@ from config import (
     API_ID, API_HASH, ANON_BOT_USERNAMES,
     TYPING_DELAY_MIN, TYPING_DELAY_MAX,
     BUBBLE_DELAY_MIN, BUBBLE_DELAY_MAX,
-    GENDER_ASK_DELAY, LOG_LEVEL, LOG_FORMAT
+    LOG_LEVEL, LOG_FORMAT
 )
 from chat_session import ChatSession, State
 
@@ -207,51 +207,19 @@ async def handle_message(client: Client, message):
         logger.debug("State is IDLE, skipping message")
         return
 
-    # STATE: WAITING_MATCH
+    # STATE: WAITING_MATCH → any message triggers conversation start
     if session.state == State.WAITING_MATCH:
-        if is_welcome_message(text):
-            logger.info("Welcome message detected → sending hii")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "hii")
+        logger.info("Match found, starting conversation → %s", text[:80])
+        set_state(State.CHATTING, "match received, starting chat")
+        session.add_message("user", text)
 
-            await asyncio.sleep(random.uniform(GENDER_ASK_DELAY, GENDER_ASK_DELAY + 1))
-            await client.send_message(chat_id, "m f?")
-
-            set_state(State.WAITING_GENDER, "welcome detected and gender prompt sent")
-        else:
-            logger.debug("Still waiting for welcome/match confirmation")
-        return
-
-    # STATE: WAITING_GENDER
-    if session.state == State.WAITING_GENDER:
-        gender = detect_gender(text)
-
-        if gender == "male":
-            logger.info("Male detected → skipping, sending /next")
-            old_state = session.state
-            session.reset()
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "/next")
-            set_state_from(old_state, State.WAITING_MATCH, "male detected, skipping chat")
-            return
-
-        elif gender == "female":
-            logger.info("Female detected → starting chat")
-            set_state(State.CHATTING, "female detected")
-            session.add_message("user", text)
-
-            # Generate reply
-            bubbles = generate_reply(session.get_history(), get_wib_time())
-            if not bubbles:
-                logger.warning("Gemini returned empty bubbles, using fallback")
-                bubbles = ["..."]
+        bubbles = generate_reply(session.get_history(), get_wib_time())
+        if bubbles:
             for bubble in bubbles:
                 session.add_message("model", bubble)
-
             await send_bubbles(client, chat_id, bubbles)
-            return
-
-        logger.info("Gender unclear, waiting another response: %s", text[:80])
+        else:
+            logger.warning("Gemini returned empty, skipping reply")
         return
 
     # STATE: CHATTING
@@ -269,15 +237,13 @@ async def handle_message(client: Client, message):
         # Normal chat flow
         session.add_message("user", text)
 
-        # Generate reply
         bubbles = generate_reply(session.get_history(), get_wib_time())
-        if not bubbles:
-            logger.warning("Gemini returned empty bubbles, using fallback")
-            bubbles = ["..."]
-        for bubble in bubbles:
-            session.add_message("model", bubble)
-
-        await send_bubbles(client, chat_id, bubbles)
+        if bubbles:
+            for bubble in bubbles:
+                session.add_message("model", bubble)
+            await send_bubbles(client, chat_id, bubbles)
+        else:
+            logger.warning("Gemini returned empty, skipping reply")
         return
 
 
