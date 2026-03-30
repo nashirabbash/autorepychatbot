@@ -304,10 +304,7 @@ async def handle_message(client: Client, message):
 
     # STATE: WAITING_MATCH — only pass real stranger messages to Gemini
     if session.state == State.WAITING_MATCH:
-        if is_system_message(text) or is_feedback_prompt(text):
-            logger.debug("System/feedback message, ignoring")
-            return
-
+        # Check disconnect FIRST before other system message checks
         if is_disconnect_message(text):
             logger.info("Disconnect in WAITING_MATCH → /search")
             old_state = session.state
@@ -315,6 +312,10 @@ async def handle_message(client: Client, message):
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "/search")
             set_state_from(old_state, State.WAITING_MATCH, "disconnect in waiting_match")
+            return
+
+        if is_system_message(text) or is_feedback_prompt(text):
+            logger.debug("System/feedback message, ignoring")
             return
 
         # Welcome message or any real stranger message → hand off to Gemini
@@ -327,10 +328,7 @@ async def handle_message(client: Client, message):
 
     # STATE: CHATTING — Gemini handles everything including gender detection
     if session.state == State.CHATTING:
-        if is_system_message(text) or is_feedback_prompt(text):
-            logger.debug("System/feedback message, ignoring")
-            return
-
+        # Check disconnect FIRST before other system message checks
         if is_disconnect_message(text):
             logger.info("Partner stopped → /search")
             old_state = session.state
@@ -339,6 +337,10 @@ async def handle_message(client: Client, message):
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "/search")
             set_state_from(old_state, State.WAITING_MATCH, "partner disconnected")
+            return
+
+        if is_system_message(text) or is_feedback_prompt(text):
+            logger.debug("System/feedback message, ignoring")
             return
 
         session.add_message("user", text)
