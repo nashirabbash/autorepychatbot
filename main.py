@@ -193,9 +193,13 @@ def is_feedback_prompt(text: str) -> bool:
 
 
 def is_gender_question(text: str) -> bool:
-    """Check if stranger is asking for gender (ceco, co ce, ce co, etc.)"""
+    """
+    Check if stranger is asking for our gender (kmu? hbu? kmu siapa? etc).
+    These are questions, not answers.
+    """
     t = text.strip().lower().replace(" ", "").replace("?", "").replace(".", "")
-    variants = ["ceco", "coce", "mf", "fm", "cowokcewe", "cewecowok"]
+    # Questions about our gender (stranger asking)
+    variants = ["kmu", "hbu", "kmuapa", "kmusiapa", "km", "u", "siapa", "halo"]
     return t in variants
 
 
