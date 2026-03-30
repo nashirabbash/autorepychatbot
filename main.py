@@ -33,23 +33,14 @@ from chat_session import ChatSession, State
 # Lazy import for gemini_client (avoid gRPC import issues)
 generate_reply = None
 
-# Rate limiter: max 1 Gemini request at a time, min 4s between requests
+# Semaphore: max 1 Gemini request at a time (no artificial delay)
 _gemini_semaphore = asyncio.Semaphore(1)
-_gemini_last_call = 0.0
-_GEMINI_MIN_INTERVAL = 2.0  # seconds between requests
 
 
 async def call_gemini(history: list, current_time: str) -> list:
-    """Wrapper around generate_reply with rate limiting."""
-    global _gemini_last_call
+    """Call Gemini with stranger's latest message as context. One request at a time."""
     async with _gemini_semaphore:
-        now = asyncio.get_event_loop().time()
-        wait = _GEMINI_MIN_INTERVAL - (now - _gemini_last_call)
-        if wait > 0:
-            await asyncio.sleep(wait)
-        result = generate_reply(history, current_time)
-        _gemini_last_call = asyncio.get_event_loop().time()
-        return result
+        return generate_reply(history, current_time)
 
 # Setup logging (prevent duplicate handlers)
 logger = logging.getLogger(__name__)
