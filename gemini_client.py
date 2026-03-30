@@ -19,6 +19,44 @@ except FileNotFoundError:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 
+def warm_up_persona() -> bool:
+    """
+    Ask Gemini to read and confirm understanding of persona before starting.
+    Returns True if Gemini confirms, False if failed.
+    """
+    if not SYSTEM_PROMPT:
+        logger.error("❌ Cannot warm up: persona.txt is empty")
+        return False
+
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[types.Content(
+                role="user",
+                parts=[types.Part(text=(
+                    "Baca semua instruksi yang ada di system prompt kamu. "
+                    "Kalau sudah paham, konfirmasi dengan menyebutkan: "
+                    "1) kamu siapa, 2) angkatan dan asal kota kamu, "
+                    "3) gaya chat kamu seperti apa, 4) aturan keras yang harus kamu ikuti. "
+                    "Jawab dalam 4-5 kalimat singkat."
+                ))]
+            )],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+            ),
+        )
+        summary = response.text.strip()
+        logger.info("✅ Gemini persona confirmed:")
+        for line in summary.split("\n"):
+            if line.strip():
+                logger.info("   %s", line.strip())
+        return True
+
+    except Exception as e:
+        logger.error("❌ Gemini warm-up failed: %s", e)
+        return False
+
+
 def generate_reply(history: list, current_time: str) -> list[str]:
     """
     Generate a reply using Gemini API with HVM persona.

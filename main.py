@@ -424,6 +424,18 @@ async def main():
         logger.info(f"Connected bots: {', '.join(f'@{b}' for b in ANON_BOT_USERNAMES)}")
         logger.info(f"API ID: {API_ID}")
 
+        # Warm up Gemini — read and confirm persona before starting
+        logger.info("⏳ Loading persona to Gemini...")
+        from gemini_client import warm_up_persona, generate_reply as _generate_reply
+        global generate_reply
+        generate_reply = _generate_reply
+
+        ok = await asyncio.get_event_loop().run_in_executor(None, warm_up_persona)
+        if not ok:
+            logger.warning("⚠️  Gemini warm-up failed, continuing anyway...")
+        else:
+            logger.info("✅ Gemini siap — persona dipahami, mulai otomasi Telegram...")
+
         try:
             # Send initial /next to all anonymous chat bots to start searching
             for idx, bot_username in enumerate(ANON_BOT_USERNAMES, 1):
