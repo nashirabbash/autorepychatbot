@@ -251,13 +251,13 @@ async def handle_message(client: Client, message):
             return
 
         if gender == "female":
-            logger.info("Female → starting chat")
+            logger.info("Female → sending opener, waiting for stranger to reply")
             set_state(State.CHATTING, "female confirmed")
-            bubbles = await call_gemini(session.get_history(), get_wib_time())
-            if bubbles:
-                for bubble in bubbles:
-                    session.add_message("model", bubble)
-                await send_bubbles(client, chat_id, bubbles)
+            await asyncio.sleep(random.uniform(1, 2))
+            opener = "hii"
+            await client.send_message(chat_id, opener)
+            session.add_message("model", opener)
+            # Don't call Gemini yet — wait for stranger's next message
             return
 
         # Gender unclear → keep waiting
