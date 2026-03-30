@@ -36,6 +36,12 @@ def set_state(new_state: State, reason: str):
     logger.info("State transition: %s -> %s | %s", old_state.value, new_state.value, reason)
 
 
+def set_state_from(old_state: State, new_state: State, reason: str):
+    """State transition logger when state changed outside set_state (e.g. reset)."""
+    session.state = new_state
+    logger.info("State transition: %s -> %s | %s", old_state.value, new_state.value, reason)
+
+
 def get_wib_time() -> str:
     """Get current time in WIB (UTC+7) format HH:MM"""
     wib = timezone(timedelta(hours=7))
@@ -64,7 +70,7 @@ async def send_with_delay(
         await client.send_chat_action(chat_id, ChatAction.TYPING)
         await asyncio.sleep(random.uniform(delay_min, delay_max))
         await client.send_message(chat_id, text)
-        logger.info("Sent message: %s", text[:80])
+        logger.debug("Sent message: %s", text[:80])
     except Exception as e:
         logger.error(f"Failed to send message: {e}")
 
@@ -79,7 +85,7 @@ async def send_bubbles(client: Client, chat_id: int, bubbles: list):
         bubbles: List of strings, each is one bubble message
     """
     for idx, bubble in enumerate(bubbles, 1):
-        logger.info("Sending bubble %s/%s", idx, len(bubbles))
+        logger.debug("Sending bubble %s/%s", idx, len(bubbles))
         await send_with_delay(
             client, chat_id, bubble,
             delay_min=BUBBLE_DELAY_MIN,
@@ -163,11 +169,11 @@ async def handle_message(client: Client, message):
     text = message.text
     chat_id = message.chat.id
 
-    logger.info(f"[{session.state.value}] Received: {text[:50]}...")
+    logger.debug("[%s] Received: %s", session.state.value, text[:80])
 
     # STATE: IDLE -> WAITING_MATCH
     if session.state == State.IDLE:
-        logger.info("State is IDLE, skipping message: %s", text[:80])
+        logger.debug("State is IDLE, skipping message")
         return
 
     # STATE: WAITING_MATCH
@@ -191,10 +197,11 @@ async def handle_message(client: Client, message):
 
         if gender == "male":
             logger.info("Male detected → skipping, sending /next")
+            old_state = session.state
             session.reset()
             await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "/next")
-            set_state(State.WAITING_MATCH, "male detected, skipping chat")
+            set_state_from(old_state, State.WAITING_MATCH, "male detected, skipping chat")
             return
 
         elif gender == "female":
@@ -221,10 +228,11 @@ async def handle_message(client: Client, message):
         # Check for disconnect
         if is_disconnect_message(text):
             logger.info("Disconnect detected → resetting and sending /next")
+            old_state = session.state
             session.reset()
             await asyncio.sleep(random.uniform(1, 3))
             await client.send_message(chat_id, "/next")
-            set_state(State.WAITING_MATCH, "disconnect detected")
+            set_state_from(old_state, State.WAITING_MATCH, "disconnect detected")
             return
 
         # Normal chat flow
