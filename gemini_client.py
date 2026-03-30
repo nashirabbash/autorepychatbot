@@ -2,8 +2,6 @@ import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY
 import logging
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load system prompt from persona.txt
