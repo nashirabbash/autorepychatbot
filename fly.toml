@@ -1,0 +1,45 @@
+# Fly.io Configuration
+# Generated for AutoReply ChatBot
+
+app = "autorepychatbot"
+primary_region = "sin"  # Singapore - closest to Indonesia
+
+[build]
+dockerfile = "Dockerfile"
+
+[env]
+# Set Python to run in unbuffered mode for live logging
+PYTHONUNBUFFERED = "1"
+
+# Logging level
+LOG_LEVEL = "INFO"
+
+[processes]
+bot = "python main.py"
+
+[mounts]
+# Optional: Mount volume for persistent session files if needed
+# source = "bot_sessions"
+# destination = "/app"
+
+[[services]]
+processes = ["bot"]
+# Internal port (bot doesn't expose HTTP)
+protocol = "tcp"
+internal_port = 8080
+
+# Health check (bot doesn't have HTTP endpoint, so we skip health checks)
+[services.tcp_checks]
+enabled = false
+
+[env.variables]
+# Bot will read these from environment
+# ACTUAL VALUES WILL BE SET VIA: flyctl secrets set
+# Do NOT put sensitive values here
+
+[env.secrets]
+# These will be set via: flyctl secrets set API_ID "value"
+# API_ID - from my.telegram.org
+# API_HASH - from my.telegram.org
+# GEMINI_API_KEY - from Google AI Studio
+# ANON_BOT_USERNAMES - default is fine, can override if needed
