@@ -162,25 +162,17 @@ def detect_gender(text: str) -> str | None:
 
 def is_disconnect_message(text: str) -> bool:
     """
-    Check if message indicates chat disconnection.
-
-    Args:
-        text: Message text
-
-    Returns:
-        True if disconnect detected, False otherwise
+    Check if partner stopped/left the chat.
+    When true, bot should send /search to find new partner.
+    Based on chat_bot.md: "Lawan bicara telah meninggalkan" or "Your partner has stopped"
     """
-    disconnect_keywords = [
-        "has disconnected",
-        "telah berakhir",
-        "partner has left",
-        "stranger disconnected",
-        "obrolan berakhir",
-        "disconnected"
-    ]
-
-    text_lower = text.lower()
-    return any(kw in text_lower for kw in disconnect_keywords)
+    t = text.lower()
+    return any(kw in t for kw in [
+        "telah meninggalkan percakapan", "partner has stopped",
+        "stopped the chat", "obrolan berakhir",
+        "ingin mengobrol dengan orang lain",
+        "want to chat with someone else"
+    ])
 
 
 def is_greeting(text: str) -> bool:
@@ -198,31 +190,44 @@ def is_gender_question(text: str) -> bool:
 
 
 def is_system_message(text: str) -> bool:
-    """Check if message is a system message (not from stranger)."""
+    """
+    Check if message is from system (not a real stranger message).
+    Based on chat_bot.md specifications.
+    """
     t = text.lower()
-    system_keywords = [
-        "sedang mencari", "searching", "mencari obrolan",
-        "maaf anda tidak", "tidak dalam obrolan",
-        "telah meninggalkan", "disconnected", "obrolan berakhir",
-        "/next", "/search", "/stop"
-    ]
-    return any(kw in t for kw in system_keywords)
+
+    # Searching for partner
+    if any(kw in t for kw in ["sedang mencari", "looking for a partner"]):
+        return True
+
+    # Partner stopped/disconnected
+    if any(kw in t for kw in [
+        "telah meninggalkan", "stopped the chat", "partner has stopped",
+        "obrolan berakhir", "disconnected"
+    ]):
+        return True
+
+    # You stopped the chat
+    if any(kw in t for kw in [
+        "anda telah meninggalkan", "you stopped the chat",
+        "searching for a new partner"
+    ]):
+        return True
+
+    # Feedback prompt
+    if "feedback tentang pasangan" in t or "leave feedback" in t:
+        return True
+
+    return False
 
 
 def is_welcome_message(text: str) -> bool:
     """
-    Check if message indicates a successful match (welcome to stranger).
-
-    Args:
-        text: Message text
-
-    Returns:
-        True if welcome message (match found), False otherwise
+    Check if message indicates a successful match (partner found).
+    Based on chat_bot.md: "Pasangan telah ditemukan!" or "Partner found"
     """
     t = text.lower()
-    # Match found indicators
-    return ("pasangan telah ditemukan" in t or "match found" in t or
-            "you have been matched" in t or "orang baru" in t) and \
+    return ("pasangan telah ditemukan" in t or "partner found" in t) and \
            ("/next" in t or "/search" in t)
 
 
@@ -325,14 +330,14 @@ async def handle_message(client: Client, message):
 
     # STATE: CHATTING
     if session.state == State.CHATTING:
-        # Check for disconnect
+        # Check for disconnect (partner stopped)
         if is_disconnect_message(text):
-            logger.info("Disconnect detected → resetting and sending /next")
+            logger.info("Partner stopped → resetting and sending /search")
             old_state = session.state
             session.reset()
-            await asyncio.sleep(random.uniform(1, 3))
-            await client.send_message(chat_id, "/next")
-            set_state_from(old_state, State.WAITING_MATCH, "disconnect detected")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "/search")
+            set_state_from(old_state, State.WAITING_MATCH, "partner disconnected")
             return
 
         # Stranger message → add to history as context, then generate reply
