@@ -43,6 +43,7 @@ def warm_up_persona() -> bool:
             )],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
+                http_options={"timeout": 1200.0},  # 20 minutes timeout
             ),
         )
         summary = response.text.strip()
@@ -89,6 +90,7 @@ def generate_reply(history: list, current_time: str) -> list[str]:
             contents=gemini_contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_with_context,
+                http_options={"timeout": 1200.0},  # 20 minutes timeout
             ),
         )
 
@@ -105,8 +107,29 @@ def generate_reply(history: list, current_time: str) -> list[str]:
         err = str(e)
         if "429" in err or "RESOURCE_EXHAUSTED" in err:
             logger.warning("⚠️  Gemini rate limit hit, skipping reply")
-        else:
-            logger.error(f"❌ Gemini API error: {e}")
+            return []
+        # Retry once on connection errors (timeout, server disconnect)
+        if any(k in err for k in ["disconnected", "timeout", "Server disconnected", "Connection"]):
+            logger.warning("⚠️  Gemini connection error, retrying once... (%s)", err[:60])
+            try:
+                response = client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=gemini_contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_with_context,
+                        http_options={"timeout": 1200.0},  # 20 minutes timeout
+                    ),
+                )
+                bubbles = [
+                    line.strip() for line in response.text.split("\n")
+                    if line.strip() and not line.strip().startswith("[CONTEXT:")
+                ]
+                logger.info(f"✓ Retry successful, {len(bubbles)} bubbles")
+                return bubbles
+            except Exception as e2:
+                logger.error(f"❌ Gemini retry failed: {e2}")
+                return []
+        logger.error(f"❌ Gemini API error: {e}")
         return []
 
 
