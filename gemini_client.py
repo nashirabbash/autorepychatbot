@@ -35,31 +35,30 @@ def generate_reply(history: list, current_time: str) -> list[str]:
         if len(history) > MAX_HISTORY:
             history = history[-MAX_HISTORY:]
 
-        # Add time context to the last user message
-        history_with_context = history.copy()
-        if history_with_context and history_with_context[-1]["role"] == "user":
-            last_msg = dict(history_with_context[-1])
-            last_msg["content"] = f"{last_msg['content']}\n\n[CONTEXT: Waktu sekarang {current_time} WIB.]"
-            history_with_context[-1] = last_msg
-
         # Convert to Gemini SDK format
         gemini_contents = []
-        for item in history_with_context:
+        for item in history:
             role = "user" if item["role"] == "user" else "model"
             gemini_contents.append(
                 types.Content(role=role, parts=[types.Part(text=item["content"])])
             )
 
+        # Inject time context into system instruction, not conversation
+        system_with_context = f"{SYSTEM_PROMPT}\n\n[CONTEXT: Waktu sekarang {current_time} WIB.]"
+
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=gemini_contents,
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=system_with_context,
             ),
         )
 
         reply_text = response.text
-        bubbles = [line.strip() for line in reply_text.split("\n") if line.strip()]
+        bubbles = [
+            line.strip() for line in reply_text.split("\n")
+            if line.strip() and not line.strip().startswith("[CONTEXT:")
+        ]
 
         logger.info(f"✓ Generated {len(bubbles)} bubbles from Gemini")
         return bubbles
