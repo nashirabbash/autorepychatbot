@@ -15,12 +15,10 @@ except FileNotFoundError:
     logger.error("❌ persona.txt not found!")
     SYSTEM_PROMPT = ""
 
-# Initialize Gemini client with 20-minute timeout for long user response delays
-# Set timeout at client level to avoid "deadline too short" errors
-client = genai.Client(
-    api_key=GEMINI_API_KEY,
-    http_options=types.HttpOptions(timeout=1200.0)  # 20 minutes
-)
+# Initialize Gemini client (uses HTTP, no gRPC)
+# Note: google-genai SDK handles timeouts internally; long-running requests
+# are retried automatically by the SDK's built-in retry mechanism
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def warm_up_persona() -> bool:
@@ -47,6 +45,7 @@ def warm_up_persona() -> bool:
             )],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
+                automatic_function_calling=False,
             ),
         )
         summary = response.text.strip()
@@ -93,6 +92,7 @@ def generate_reply(history: list, current_time: str) -> list[str]:
             contents=gemini_contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_with_context,
+                automatic_function_calling=False,  # Disable AFC to prevent deadline conflicts
             ),
         )
 
@@ -119,6 +119,7 @@ def generate_reply(history: list, current_time: str) -> list[str]:
                     contents=gemini_contents,
                     config=types.GenerateContentConfig(
                         system_instruction=system_with_context,
+                        automatic_function_calling=False,
                     ),
                 )
                 bubbles = [
