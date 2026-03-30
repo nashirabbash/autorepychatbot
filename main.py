@@ -29,6 +29,7 @@ from config import (
     BUBBLE_DELAY_MIN, BUBBLE_DELAY_MAX,
     GEMINI_REQUEST_DELAY_MIN, GEMINI_REQUEST_DELAY_MAX,
     GEMINI_MIN_REQUEST_INTERVAL,
+    CHAT_POLLING_INTERVAL, MAX_BUBBLES_PER_REPLY,
     LOG_LEVEL, LOG_FORMAT
 )
 from chat_session import ChatSession, State
@@ -62,10 +63,14 @@ async def _handle_bubbles(client: Client, chat_id: int, bubbles: list):
     """
     Send bubbles to chat. If Gemini returns [SKIP], send /next instead.
     [SKIP] token means Gemini detected male stranger.
+    Limit bubbles to MAX_BUBBLES_PER_REPLY to keep responses short.
     """
     if not bubbles:
         logger.warning("Gemini returned empty, skipping reply")
         return
+
+    # Limit bubbles to max allowed per reply
+    bubbles = bubbles[:MAX_BUBBLES_PER_REPLY]
 
     skip = any(b.strip() == "[SKIP]" for b in bubbles)
     real_bubbles = [b for b in bubbles if b.strip() != "[SKIP]"]
@@ -333,15 +338,25 @@ async def handle_message(client: Client, message):
             logger.debug("System/feedback message, ignoring")
             return
 
-        # Welcome message or any real stranger message → hand off to Gemini
-        logger.info("Match/stranger detected → passing to Gemini")
+        # Welcome message or any real stranger message → enter CHATTING and send opening message
+        logger.info("Match/stranger detected → entering CHATTING mode")
         set_state(State.CHATTING, "stranger message received")
-        session.add_message("user", text)
-        bubbles = await call_gemini(session.get_history(), get_wib_time())
-        await _handle_bubbles(client, chat_id, bubbles)
+
+        # Send opening message (topik seru) - 1 bubble only
+        opening_bubbles = await call_gemini([{"role": "user", "content": "Mulai chat. Kirim topik seru yang bisa dibuat kekasih marah, 1 bullet point saja."}], get_wib_time())
+        opening_bubbles = opening_bubbles[:1]  # Only 1 bubble for opening
+        if opening_bubbles:
+            for bubble in opening_bubbles:
+                session.add_message("model", bubble)
+            await send_bubbles(client, chat_id, opening_bubbles)
+
+        # Initialize batch processing timer
+        session.last_message_batch_time = time.time()
+        session.pending_messages = []
+        logger.info(f"✓ Opening message sent. Will batch next messages for {CHAT_POLLING_INTERVAL}s")
         return
 
-    # STATE: CHATTING — Gemini handles everything including gender detection
+    # STATE: CHATTING — Buffer messages and process in batches every CHAT_POLLING_INTERVAL
     if session.state == State.CHATTING:
         # Check disconnect FIRST before other system message checks
         if is_disconnect_message(text):
@@ -358,9 +373,31 @@ async def handle_message(client: Client, message):
             logger.debug("System/feedback message, ignoring")
             return
 
-        session.add_message("user", text)
-        bubbles = await call_gemini(session.get_history(), get_wib_time())
-        await _handle_bubbles(client, chat_id, bubbles)
+        # Buffer this message and add to pending
+        session.pending_messages.append(text)
+        logger.debug(f"Buffered message ({len(session.pending_messages)} pending): {text[:60]}")
+
+        # Check if enough time has passed since last batch
+        now = time.time()
+        time_since_last_batch = now - session.last_message_batch_time
+
+        if time_since_last_batch >= CHAT_POLLING_INTERVAL:
+            # Process all pending messages as one batch
+            if session.pending_messages:
+                logger.info(f"⏱️  Processing {len(session.pending_messages)} buffered messages from stranger")
+                # Combine all pending messages into conversation history
+                for pending_text in session.pending_messages:
+                    session.add_message("user", pending_text)
+                session.pending_messages = []
+
+                # Send to Gemini once with all messages
+                bubbles = await call_gemini(session.get_history(), get_wib_time())
+                await _handle_bubbles(client, chat_id, bubbles)
+                session.last_message_batch_time = now
+        else:
+            wait_time = CHAT_POLLING_INTERVAL - time_since_last_batch
+            logger.debug(f"⏳ Next batch in {wait_time:.0f}s ({len(session.pending_messages)} messages buffered)")
+
         return
 
 

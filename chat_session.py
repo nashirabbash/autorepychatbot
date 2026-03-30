@@ -24,6 +24,8 @@ class ChatSession:
         self.current_bot = None  # Username bot anon yang sedang aktif
         self.last_action = None  # Track last action: "next" atau "search"
         self.last_gemini_request_time = 0  # Track time of last Gemini API call for rate limiting
+        self.last_message_batch_time = 0  # Track when we last pulled messages for Gemini
+        self.pending_messages = []  # Buffer for messages waiting to be batched
         logger.info("✓ New ChatSession created")
 
     def add_message(self, role: str, content: str):
@@ -53,6 +55,8 @@ class ChatSession:
         self.state = State.IDLE
         self.current_bot = None
         self.last_gemini_request_time = 0
+        self.last_message_batch_time = 0
+        self.pending_messages = []
         logger.info("✓ ChatSession reset")
 
 

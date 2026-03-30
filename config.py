@@ -56,6 +56,12 @@ GEMINI_REQUEST_DELAY_MAX = _get_float_env("GEMINI_REQUEST_DELAY_MAX", 1.5)
 # Min delay between consecutive Gemini requests (even if messages come fast)
 GEMINI_MIN_REQUEST_INTERVAL = _get_float_env("GEMINI_MIN_REQUEST_INTERVAL", 3.0)
 
+# Chat polling behavior
+# After sending opening message or reply, wait this long before processing next batch of messages
+CHAT_POLLING_INTERVAL = _get_int_env("CHAT_POLLING_INTERVAL", 60)  # 1 minute
+# Max bubbles per reply (to keep responses short and controlled)
+MAX_BUBBLES_PER_REPLY = _get_int_env("MAX_BUBBLES_PER_REPLY", 2)
+
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
