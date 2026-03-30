@@ -338,49 +338,60 @@ async def handle_message(client: Client, message):
             logger.debug("System/feedback message, ignoring")
             return
 
-        # Check if this is the welcome message (match found)
+        # Phase 1: Welcome message (match found) → send greeting "hii"
         if is_welcome_message(text):
             logger.info("✓ Match found → sending greeting 'hii'")
             await send_with_delay(client, chat_id, "hii")
             session.add_message("model", "hii")
+            session.greeting_sent = True
             return
 
-        # Stranger responded to greeting → detect gender and send opener without pooling
-        logger.info("Stranger response received → gender detection + opening (no pooling)")
-
-        # Pass to Gemini: detect gender and generate opening message
-        # Persona should output: gender_confirmation (co/ce) + topik seru on separate lines
-        session.add_message("user", text)
-        bubbles = await call_gemini(session.get_history(), get_wib_time())
-
-        # Handle the response
-        skip = any(b.strip() == "[SKIP]" for b in bubbles)
-        real_bubbles = [b for b in bubbles if b.strip() != "[SKIP]"]
-
-        if skip:
-            # Male detected → send /next
-            logger.info("♂️  Male detected → sending /next")
-            await asyncio.sleep(random.uniform(1, 2))
-            await client.send_message(chat_id, "/next")
-            old_state = session.state
-            session.last_action = "next"
-            session.reset()
-            set_state_from(old_state, State.WAITING_MATCH, "male detected by Gemini")
+        # Phase 2: Stranger responded to greeting → send gender question
+        if session.greeting_sent and not session.gender_question_sent:
+            logger.info("✓ Greeting acknowledged → sending gender question 'co ce?'")
+            gender_questions = ["co ce?", "m f?", "kmu?", "hbu?"]
+            question = random.choice(gender_questions)
+            await send_with_delay(client, chat_id, question)
+            session.add_message("model", question)
+            session.gender_question_sent = True
             return
 
-        # Female detected → send confirmation + opener, then activate pooling
-        if real_bubbles:
-            logger.info(f"♀️  Female detected → sending {len(real_bubbles)} bubbles (gender confirmation + topik seru)")
-            for bubble in real_bubbles:
-                session.add_message("model", bubble)
-            await send_bubbles(client, chat_id, real_bubbles)
+        # Phase 3: Stranger answered gender question → detect gender and send opener with pooling
+        if session.greeting_sent and session.gender_question_sent:
+            logger.info("Stranger answered gender question → detecting gender + opening (no pooling yet)")
 
-        # Transition to CHATTING with pooling enabled
-        set_state(State.CHATTING, "gender confirmed, pooling activated")
-        session.last_message_batch_time = time.time()
-        session.pending_messages = []
-        logger.info(f"✓ Pooling activated. Will batch messages for {CHAT_POLLING_INTERVAL}s")
-        return
+            # Pass to Gemini: detect gender and generate opening message
+            session.add_message("user", text)
+            bubbles = await call_gemini(session.get_history(), get_wib_time())
+
+            # Handle the response
+            skip = any(b.strip() == "[SKIP]" for b in bubbles)
+            real_bubbles = [b for b in bubbles if b.strip() != "[SKIP]"]
+
+            if skip:
+                # Male detected → send /next
+                logger.info("♂️  Male detected → sending /next")
+                await asyncio.sleep(random.uniform(1, 2))
+                await client.send_message(chat_id, "/next")
+                old_state = session.state
+                session.last_action = "next"
+                session.reset()
+                set_state_from(old_state, State.WAITING_MATCH, "male detected by Gemini")
+                return
+
+            # Female detected → send confirmation + opener, then activate pooling
+            if real_bubbles:
+                logger.info(f"♀️  Female detected → sending {len(real_bubbles)} bubbles (gender confirmation + topik seru)")
+                for bubble in real_bubbles:
+                    session.add_message("model", bubble)
+                await send_bubbles(client, chat_id, real_bubbles)
+
+            # Transition to CHATTING with pooling enabled
+            set_state(State.CHATTING, "gender confirmed, pooling activated")
+            session.last_message_batch_time = time.time()
+            session.pending_messages = []
+            logger.info(f"✓ Pooling activated. Will batch messages for {CHAT_POLLING_INTERVAL}s")
+            return
 
     # STATE: CHATTING — Buffer messages and process in batches every CHAT_POLLING_INTERVAL
     if session.state == State.CHATTING:
