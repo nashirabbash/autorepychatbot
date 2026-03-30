@@ -1,11 +1,26 @@
-from pyrogram import Client, filters
-from pyrogram.enums import ChatAction
+import sys
 import asyncio
+
+# CRITICAL: Fix Python 3.14 + Pyrogram compatibility
+# Pyrogram calls asyncio.get_event_loop() at module import time
+# This fails in Python 3.14 if no event loop exists in the thread
+original_get_event_loop = asyncio.get_event_loop
+def patched_get_event_loop():
+    try:
+        return original_get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+asyncio.get_event_loop = patched_get_event_loop
+
 import random
 import logging
 import signal
-import sys
 from datetime import datetime, timezone, timedelta
+
+from pyrogram import Client, filters
+from pyrogram.enums import ChatAction
 
 from config import (
     API_ID, API_HASH, ANON_BOT_USERNAMES,
@@ -14,7 +29,9 @@ from config import (
     GENDER_ASK_DELAY, LOG_LEVEL, LOG_FORMAT
 )
 from chat_session import ChatSession, State
-from gemini_client import generate_reply
+
+# Lazy import for gemini_client (avoid gRPC import issues)
+generate_reply = None
 
 # Setup logging (prevent duplicate handlers)
 logger = logging.getLogger(__name__)
@@ -165,7 +182,12 @@ async def handle_message(client: Client, message):
     Implements state machine for bot workflow.
     Supports multiple anonymous chat bots.
     """
-    global session
+    global session, generate_reply
+
+    # Lazy import to avoid gRPC issues during module loading
+    if generate_reply is None:
+        from gemini_client import generate_reply as _generate_reply
+        generate_reply = _generate_reply
 
     # Check if message is from one of the allowed anon bots
     sender = message.from_user.username if message.from_user else None
