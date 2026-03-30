@@ -45,21 +45,24 @@ if grep -q "your_telegram_api_id\|your_api_hash\|your_gemini_api_key" .env; then
     exit 1
 fi
 
-# Set PYTHONPATH for user-installed packages
-export PYTHONPATH="$HOME/.local/lib/python3.14/site-packages:$PYTHONPATH"
+# Use myenv Python (has all deps compiled for correct Python version)
+PYTHON="$HOME/myenv/bin/python3"
+if [ ! -f "$PYTHON" ]; then
+    PYTHON="python3"
+fi
 
-echo -e "${GREEN}✓${NC} PYTHONPATH configured"
+echo -e "${GREEN}✓${NC} Python: $PYTHON"
 echo -e "${GREEN}✓${NC} .env loaded"
 echo ""
 
 # Check if dependencies are installed
 echo -e "${BLUE}Checking dependencies...${NC}"
-python3 -c "import pyrogram; import google.generativeai" 2>/dev/null && {
+$PYTHON -c "import pyrogram; from google import genai" 2>/dev/null && {
     echo -e "${GREEN}✓${NC} All dependencies installed"
 } || {
     echo -e "${YELLOW}⚠️  Some dependencies missing${NC}"
     echo "Installing from requirements.txt..."
-    pip install -r requirements.txt
+    $PYTHON -m pip install -r requirements.txt
 }
 
 echo ""
@@ -79,4 +82,4 @@ echo -e "${BLUE}Press Ctrl+C to stop the bot${NC}"
 echo ""
 
 # Run the bot
-python3 main.py
+$PYTHON main.py

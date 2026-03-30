@@ -3,8 +3,13 @@ from google.genai import types
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY
 import logging
 import time
+import hashlib
 
 logger = logging.getLogger(__name__)
+
+# Simple response cache to avoid duplicate API calls
+_response_cache = {}
+_cache_max_size = 100  # Limit cache size to prevent memory bloat
 
 # Load system prompt from persona.txt
 try:
@@ -71,6 +76,17 @@ def generate_reply(history: list, current_time: str) -> list[str]:
     Returns:
         List of strings (each string is one chat bubble)
     """
+    # Generate cache key based on last user message + time of day
+    # (time affects response context, so include hour in cache key)
+    last_user_msg = next((msg["content"] for msg in reversed(history) if msg["role"] == "user"), "")
+    hour = current_time.split(":")[0]
+    cache_key = hashlib.md5(f"{last_user_msg}|{hour}".encode()).hexdigest()
+
+    # Return cached response if available
+    if cache_key in _response_cache:
+        logger.info(f"✓ Using cached response for: {last_user_msg[:50]}")
+        return _response_cache[cache_key]
+
     try:
         # Limit history to MAX_HISTORY messages
         if len(history) > MAX_HISTORY:
@@ -102,6 +118,12 @@ def generate_reply(history: list, current_time: str) -> list[str]:
             if line.strip() and not line.strip().startswith("[CONTEXT:")
         ]
 
+        # Cache the response
+        if len(_response_cache) >= _cache_max_size:
+            # Remove oldest entry if cache is full (simple FIFO)
+            _response_cache.pop(next(iter(_response_cache)))
+        _response_cache[cache_key] = bubbles
+
         logger.info(f"✓ Generated {len(bubbles)} bubbles from Gemini")
         return bubbles
 
@@ -126,6 +148,10 @@ def generate_reply(history: list, current_time: str) -> list[str]:
                     line.strip() for line in response.text.split("\n")
                     if line.strip() and not line.strip().startswith("[CONTEXT:")
                 ]
+                # Cache the response
+                if len(_response_cache) >= _cache_max_size:
+                    _response_cache.pop(next(iter(_response_cache)))
+                _response_cache[cache_key] = bubbles
                 logger.info(f"✓ Retry successful, {len(bubbles)} bubbles")
                 return bubbles
             except Exception as e2:

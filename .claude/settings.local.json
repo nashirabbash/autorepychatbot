@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "mcp__github__pull_request_read",
+      "Bash(gofmt -w ./cmd ./internal)",
+      "Bash(go mod:*)",
+      "Bash(go build:*)",
+      "Bash(git -C /home/broo/Documents/pfd-be status)",
+      "Bash(git -C /home/broo/Documents/pfd-be diff README.md)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git -C:*)",
+      "Bash(grep -E \"^\\\\.env$\")",
+      "Bash(git check-ignore:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git pull:*)"
+    ]
+  }
+}

@@ -17,6 +17,7 @@ asyncio.get_event_loop = patched_get_event_loop
 import random
 import logging
 import signal
+import time
 from datetime import datetime, timezone, timedelta
 
 from pyrogram import Client, filters
@@ -26,6 +27,8 @@ from config import (
     API_ID, API_HASH, ANON_BOT_USERNAMES,
     TYPING_DELAY_MIN, TYPING_DELAY_MAX,
     BUBBLE_DELAY_MIN, BUBBLE_DELAY_MAX,
+    GEMINI_REQUEST_DELAY_MIN, GEMINI_REQUEST_DELAY_MAX,
+    GEMINI_MIN_REQUEST_INTERVAL,
     LOG_LEVEL, LOG_FORMAT
 )
 from chat_session import ChatSession, State
@@ -40,6 +43,18 @@ _gemini_semaphore = asyncio.Semaphore(1)
 async def call_gemini(history: list, current_time: str) -> list:
     """Call Gemini with stranger's latest message as context. One request at a time."""
     async with _gemini_semaphore:
+        # Rate limiting: ensure minimum interval between Gemini requests
+        now = time.time()
+        time_since_last = now - session.last_gemini_request_time
+        if time_since_last < GEMINI_MIN_REQUEST_INTERVAL:
+            wait_time = GEMINI_MIN_REQUEST_INTERVAL - time_since_last
+            logger.debug(f"⏱️  Rate limiting: waiting {wait_time:.1f}s before next Gemini request")
+            await asyncio.sleep(wait_time)
+
+        # Add random delay before request to avoid thundering herd
+        await asyncio.sleep(random.uniform(GEMINI_REQUEST_DELAY_MIN, GEMINI_REQUEST_DELAY_MAX))
+
+        session.last_gemini_request_time = time.time()
         return generate_reply(history, current_time)
 
 
