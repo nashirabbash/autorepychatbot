@@ -282,8 +282,11 @@ async def handle_message(client: Client, message):
             return
 
         if gender == "female":
-            logger.info("Female → starting chat, waiting for stranger to reply")
+            logger.info("Female → sending opener")
             set_state(State.CHATTING, "female confirmed")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "hii")
+            session.add_message("model", "hii")
             return
 
         # Gender unclear → keep waiting
