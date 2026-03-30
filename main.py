@@ -281,19 +281,25 @@ async def handle_message(client: Client, message):
         return
 
 
-async def shutdown_handler(signum, frame):
+def shutdown_handler(signum, frame):
     """Handle graceful shutdown on signal."""
     logger.info(f"\n✓ Received signal {signum}, shutting down gracefully...")
-    sys.exit(0)
+    raise KeyboardInterrupt()
 
 
 async def main():
     """
     Main entry point - start bot and initialize first match search.
     """
+    loop = asyncio.get_event_loop()
+
     # Setup signal handlers for graceful shutdown
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)
+    def handle_signal(signum):
+        logger.info(f"\n✓ Received signal {signum}, shutting down gracefully...")
+        loop.stop()
+
+    loop.add_signal_handler(signal.SIGINT, handle_signal, signal.SIGINT)
+    loop.add_signal_handler(signal.SIGTERM, handle_signal, signal.SIGTERM)
 
     async with app:
         logger.info("✓ Bot started!")
@@ -318,8 +324,14 @@ async def main():
             logger.info("✓ Initialized with all bots → waiting for matches...")
 
             # Keep bot running indefinitely
-            await asyncio.Event().wait()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                logger.info("✓ Bot stopped by user")
+                raise
 
+        except KeyboardInterrupt:
+            logger.info("✓ Bot stopped by user")
         except Exception as e:
             logger.error(f"❌ Error: {e}")
 
