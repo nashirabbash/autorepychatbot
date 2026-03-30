@@ -233,10 +233,10 @@ async def handle_message(client: Client, message):
     # STATE: WAITING_MATCH
     if session.state == State.WAITING_MATCH:
         if is_welcome_message(text):
-            logger.info("Match found → sending opener after delay")
-            await asyncio.sleep(5)
+            logger.info("Match found → sending opener immediately")
+            await asyncio.sleep(random.uniform(1, 2))
             await client.send_message(chat_id, "hii")
-            await asyncio.sleep(random.uniform(0.5, 1.5))
+            await asyncio.sleep(random.uniform(0.5, 1))
             await client.send_message(chat_id, "co ce?")
             set_state(State.WAITING_GENDER, "welcome detected, opener + gender prompt sent")
             return
@@ -261,8 +261,11 @@ async def handle_message(client: Client, message):
             set_state(State.WAITING_GENDER, "stranger greeted, gender prompt sent")
             return
 
-        # Pesan lain saat waiting match → ignore
-        logger.debug("Ignoring non-welcome message in WAITING_MATCH")
+        # Pesan lain (stranger langsung chat) → treat as first message, ask gender
+        logger.info("Stranger sent first message → asking gender")
+        await asyncio.sleep(random.uniform(0.5, 1))
+        await client.send_message(chat_id, "co ce?")
+        set_state(State.WAITING_GENDER, "stranger initiated, gender prompt sent")
         return
 
     # STATE: WAITING_GENDER → route based on gender
