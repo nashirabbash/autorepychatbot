@@ -1,6 +1,5 @@
-from google import genai
-from google.genai import types
-from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY
+from openai import OpenAI
+from config import GROQ_API_KEY, GROQ_MODEL, MAX_HISTORY
 import logging
 import time
 import hashlib
@@ -31,10 +30,8 @@ except FileNotFoundError:
 # Combine persona and workflow as system instruction
 SYSTEM_PROMPT = PERSONA + "\n\n---\n\n" + WORKFLOW
 
-# Initialize Gemini client (uses HTTP, no gRPC)
-# Note: google-genai SDK handles timeouts internally; long-running requests
-# are retried automatically by the SDK's built-in retry mechanism
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize Groq client (OpenAI-compatible)
+client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 
 def warm_up_persona() -> bool:
@@ -47,38 +44,34 @@ def warm_up_persona() -> bool:
         return False
 
     try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[types.Content(
-                role="user",
-                parts=[types.Part(text=(
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": (
                     "Baca semua instruksi yang ada di system prompt kamu. "
                     "Kalau sudah paham, konfirmasi dengan menyebutkan: "
                     "1) kamu siapa, 2) angkatan dan asal kota kamu, "
                     "3) gaya chat kamu seperti apa, 4) aturan keras yang harus kamu ikuti. "
                     "Jawab dalam 4-5 kalimat singkat."
-                ))]
-            )],
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-            ),
+                )}
+            ]
         )
-        summary = response.text.strip()
-        logger.info("✅ Gemini persona confirmed:")
+        summary = response.choices[0].message.content.strip()
+        logger.info("✅ Groq persona confirmed:")
         for line in summary.split("\n"):
             if line.strip():
                 logger.info("   %s", line.strip())
         return True
 
     except Exception as e:
-        logger.error("❌ Gemini warm-up failed: %s", e)
+        logger.error("❌ Groq warm-up failed: %s", e)
         return False
 
 
 def generate_reply(history: list, current_time: str, session_state: str = "CHATTING") -> list[str]:
     """
-    Generate a reply using Gemini API with HVM persona.
+    Generate a reply using Groq API with HVM persona.
 
     Args:
         history: List of dicts with {"role": "user"/"model", "content": "..."}
@@ -110,27 +103,18 @@ def generate_reply(history: list, current_time: str, session_state: str = "CHATT
         if len(history) > MAX_HISTORY:
             history = history[-MAX_HISTORY:]
 
-        # Convert to Gemini SDK format
-        gemini_contents = []
+        # Convert to OpenAI chat format
+        messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}\n\n[CONTEXT: Waktu sekarang {current_time} WIB.]"}]
         for item in history:
-            role = "user" if item["role"] == "user" else "model"
-            gemini_contents.append(
-                types.Content(role=role, parts=[types.Part(text=item["content"])])
-            )
+            role = "user" if item["role"] == "user" else "assistant"
+            messages.append({"role": role, "content": item["content"]})
 
-        # Inject time context into system instruction, not conversation
-        system_with_context = f"{SYSTEM_PROMPT}\n\n[CONTEXT: Waktu sekarang {current_time} WIB.]"
-
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=gemini_contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_with_context,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),  # Disable AFC to prevent deadline conflicts
-            ),
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages
         )
 
-        reply_text = response.text
+        reply_text = response.choices[0].message.content
         bubbles = [
             line.strip() for line in reply_text.split("\n")
             if line.strip() and not line.strip().startswith("[CONTEXT:")
@@ -152,28 +136,24 @@ def generate_reply(history: list, current_time: str, session_state: str = "CHATT
                 _response_cache.pop(next(iter(_response_cache)))
             _response_cache[cache_key] = bubbles
 
-        logger.info(f"✓ Generated {len(bubbles)} bubbles from Gemini")
+        logger.info(f"✓ Generated {len(bubbles)} bubbles from Groq")
         return bubbles
 
     except Exception as e:
-        err = str(e)
-        if "429" in err or "RESOURCE_EXHAUSTED" in err:
-            logger.warning("⚠️  Gemini rate limit hit, skipping reply")
+        err = str(e).lower()
+        if "429" in err or "rate limit" in err:
+            logger.warning("⚠️  Groq rate limit hit, skipping reply")
             return []
         # Retry once on connection errors (timeout, server disconnect)
-        if any(k in err for k in ["disconnected", "timeout", "Server disconnected", "Connection"]):
-            logger.warning("⚠️  Gemini connection error, retrying once... (%s)", err[:60])
+        if any(k in err for k in ["disconnected", "timeout", "server disconnected", "connection"]):
+            logger.warning("⚠️  Groq connection error, retrying once... (%s)", err[:60])
             try:
-                response = client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=gemini_contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_with_context,
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                    ),
+                response = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=messages
                 )
                 bubbles = [
-                    line.strip() for line in response.text.split("\n")
+                    line.strip() for line in response.choices[0].message.content.split("\n")
                     if line.strip() and not line.strip().startswith("[CONTEXT:")
                 ]
                 # Cache the response
@@ -183,9 +163,9 @@ def generate_reply(history: list, current_time: str, session_state: str = "CHATT
                 logger.info(f"✓ Retry successful, {len(bubbles)} bubbles")
                 return bubbles
             except Exception as e2:
-                logger.error(f"❌ Gemini retry failed: {e2}")
+                logger.error(f"❌ Groq retry failed: {e2}")
                 return []
-        logger.error(f"❌ Gemini API error: {e}")
+        logger.error(f"❌ Groq API error: {e}")
         return []
 
 
@@ -196,7 +176,7 @@ if __name__ == "__main__":
         {"role": "user", "content": "lagi ngapain?"}
     ]
 
-    print("\n=== Testing Gemini Client ===")
+    print("\n=== Testing Groq Client ===")
     replies = generate_reply(test_history, "21:00")
     print("\nGenerated reply bubbles:")
     for i, bubble in enumerate(replies, 1):
