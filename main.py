@@ -41,7 +41,7 @@ generate_reply = None
 _gemini_semaphore = asyncio.Semaphore(1)
 
 
-async def call_gemini(history: list, current_time: str) -> list:
+async def call_gemini(history: list, current_time: str, session_state: str = "CHATTING") -> list:
     """Call Gemini with stranger's latest message as context. One request at a time."""
     async with _gemini_semaphore:
         # Rate limiting: ensure minimum interval between Gemini requests
@@ -56,7 +56,7 @@ async def call_gemini(history: list, current_time: str) -> list:
         await asyncio.sleep(random.uniform(GEMINI_REQUEST_DELAY_MIN, GEMINI_REQUEST_DELAY_MAX))
 
         session.last_gemini_request_time = time.time()
-        return generate_reply(history, current_time)
+        return generate_reply(history, current_time, session_state)
 
 
 async def _handle_bubbles(client: Client, chat_id: int, bubbles: list):
@@ -286,7 +286,7 @@ async def handle_message(client: Client, message):
         # All messages in WAITING_MATCH → pass to Gemini (no pooling, instant response)
         # This includes welcome message, greeting responses, and gender answers
         session.add_message("user", text)
-        bubbles = await call_gemini(session.get_history(), get_wib_time())
+        bubbles = await call_gemini(session.get_history(), get_wib_time(), "WAITING_MATCH")
 
         # Parse control tokens
         skip = any(b.strip() == "[SKIP]" for b in bubbles)
