@@ -11,14 +11,25 @@ logger = logging.getLogger(__name__)
 _response_cache = {}
 _cache_max_size = 100  # Limit cache size to prevent memory bloat
 
-# Load system prompt from persona.txt
+# Load system prompt from persona.txt and workflow.txt
 try:
     with open("persona.txt", "r", encoding="utf-8") as f:
-        SYSTEM_PROMPT = f.read()
+        PERSONA = f.read()
     logger.info("✓ Persona loaded from persona.txt")
 except FileNotFoundError:
     logger.error("❌ persona.txt not found!")
-    SYSTEM_PROMPT = ""
+    PERSONA = ""
+
+try:
+    with open("workflow.txt", "r", encoding="utf-8") as f:
+        WORKFLOW = f.read()
+    logger.info("✓ Workflow loaded from workflow.txt")
+except FileNotFoundError:
+    logger.error("❌ workflow.txt not found!")
+    WORKFLOW = ""
+
+# Combine persona and workflow as system instruction
+SYSTEM_PROMPT = PERSONA + "\n\n---\n\n" + WORKFLOW
 
 # Initialize Gemini client (uses HTTP, no gRPC)
 # Note: google-genai SDK handles timeouts internally; long-running requests

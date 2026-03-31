@@ -10,7 +10,6 @@ class State(Enum):
     """Enum untuk state/kondisi bot saat ini"""
     IDLE = "idle"                       # Bot belum mulai apa-apa
     WAITING_MATCH = "waiting_match"     # Bot sudah kirim /next, menunggu match
-    WAITING_GENDER = "waiting_gender"   # Bot sudah kirim "hii" dan "m f?", menunggu jawaban
     CHATTING = "chatting"               # Lawan chat sudah konfirmasi perempuan, sedang ngobrol
 
 
@@ -26,8 +25,6 @@ class ChatSession:
         self.last_gemini_request_time = 0  # Track time of last Gemini API call for rate limiting
         self.last_message_batch_time = 0  # Track when we last pulled messages for Gemini
         self.pending_messages = []  # Buffer for messages waiting to be batched
-        self.greeting_sent = False  # Track if greeting "hii" already sent
-        self.gender_question_sent = False  # Track if gender question "co ce?" already sent
         logger.info("✓ New ChatSession created")
 
     def add_message(self, role: str, content: str):
@@ -59,8 +56,6 @@ class ChatSession:
         self.last_gemini_request_time = 0
         self.last_message_batch_time = 0
         self.pending_messages = []
-        self.greeting_sent = False
-        self.gender_question_sent = False
         logger.info("✓ ChatSession reset")
 
 
