@@ -58,7 +58,7 @@ MAX_HISTORY = _get_int_env("MAX_HISTORY", 20)
 GEMINI_REQUEST_DELAY_MIN = _get_float_env("GEMINI_REQUEST_DELAY_MIN", 0.5)
 GEMINI_REQUEST_DELAY_MAX = _get_float_env("GEMINI_REQUEST_DELAY_MAX", 1.5)
 # Min delay between consecutive Gemini requests (even if messages come fast)
-GEMINI_MIN_REQUEST_INTERVAL = _get_float_env("GEMINI_MIN_REQUEST_INTERVAL", 3.0)
+GEMINI_MIN_REQUEST_INTERVAL = _get_float_env("GEMINI_MIN_REQUEST_INTERVAL", 6.0)
 
 # Chat polling behavior
 # After sending opening message or reply, wait this long before processing next batch of messages

@@ -283,10 +283,56 @@ async def handle_message(client: Client, message):
             logger.debug("System/feedback message, ignoring")
             return
 
-        # All messages in WAITING_MATCH → pass to Gemini (no pooling, instant response)
-        # This includes welcome message, greeting responses, and gender answers
+        # =========================================================================
+        # FAST-PATH: Hardcoded Gender Detection (Bypass AI to save TPM tokens!)
+        # =========================================================================
+        t_lower = text.lower().strip()
+        import re
+        t_cleaned = re.sub(r'[^a-z0-9]', '', t_lower)
+        
+        male_keywords = ["m", "co", "cowo", "cowok", "laki", "lakilaki", "pria", "boy", "man"]
+        female_keywords = ["f", "ce", "cewe", "cewek", "perempuan", "wanita", "girl", "woman", "p"]
+        
+        # Scenario 1: Exact Match MALE -> Skip without calling Groq
+        if t_cleaned in male_keywords or t_lower in male_keywords:
+            logger.info(f"♂️  Male detected (Fast-Path: '{text}') → sending /next")
+            await asyncio.sleep(random.uniform(1, 2))
+            await client.send_message(chat_id, "/next")
+            old_state = session.state
+            session.last_action = "next"
+            session.reset()
+            set_state_from(old_state, State.WAITING_MATCH, "male detected (fast-path)")
+            return
+
+        # Scenario 2: Exact Match FEMALE -> Transition & force topic without deep gender detection
+        if t_cleaned in female_keywords or t_lower in female_keywords:
+            logger.info(f"♀️  Female detected (Fast-Path: '{text}') → transitioning to CHATTING")
+            set_state(State.CHATTING, "female detected (fast-path)")
+            session.last_message_batch_time = time.time()
+            session.pending_messages = []
+            
+            # Since fast-path bypassed AI conversation, we provide an immediate manual reply 
+            # OR we just let the AI handle it by sending a context prompt
+            session.add_message("user", f"aku cewek ({text}), lagi ngapain?")
+            bubbles = await call_gemini(session.get_history(), get_wib_time(), "CHATTING")
+            if bubbles:
+                real_bubbles = [b for b in bubbles if b.strip() not in ("[SKIP]", "[START_CHAT]")]
+                for bubble in real_bubbles:
+                    session.add_message("model", bubble)
+                await send_bubbles(client, chat_id, real_bubbles)
+            logger.info(f"✓ Pooling activated. Will batch messages for {CHAT_POLLING_INTERVAL}s")
+            return
+
+        # =========================================================================
+        # SLOW-PATH: AI handles greeting and complex gender detection
+        # =========================================================================
         session.add_message("user", text)
         bubbles = await call_gemini(session.get_history(), get_wib_time(), "WAITING_MATCH")
+
+        # Fallback if 429 rate limit happens (bubbles is empty)
+        if not bubbles:
+            logger.warning("Groq returned empty bubbles (Rate limit). Retrying in next message.")
+            return
 
         # Parse control tokens
         skip = any(b.strip() == "[SKIP]" for b in bubbles)
