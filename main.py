@@ -41,7 +41,7 @@ generate_reply = None
 _gemini_semaphore = asyncio.Semaphore(1)
 
 
-async def call_gemini(history: list, current_time: str, session_state: str = "CHATTING") -> list:
+async def call_gemini(history: list, current_time: str) -> list:
     """Call Gemini with stranger's latest message as context. One request at a time."""
     async with _gemini_semaphore:
         # Rate limiting: ensure minimum interval between Gemini requests
@@ -56,7 +56,7 @@ async def call_gemini(history: list, current_time: str, session_state: str = "CH
         await asyncio.sleep(random.uniform(GEMINI_REQUEST_DELAY_MIN, GEMINI_REQUEST_DELAY_MAX))
 
         session.last_gemini_request_time = time.time()
-        return await generate_reply(history, current_time, session_state)
+        return await generate_reply(history, current_time)
 
 
 async def _handle_bubbles(client: Client, chat_id: int, bubbles: list):
@@ -314,7 +314,7 @@ async def handle_message(client: Client, message):
             # Since fast-path bypassed AI conversation, we provide an immediate manual reply 
             # OR we just let the AI handle it by sending a context prompt
             session.add_message("user", f"aku cewek ({text}), lagi ngapain?")
-            bubbles = await call_gemini(session.get_history(), get_wib_time(), "CHATTING")
+            bubbles = await call_gemini(session.get_history(), get_wib_time())
             if bubbles:
                 real_bubbles = [b for b in bubbles if b.strip() not in ("[SKIP]", "[START_CHAT]")]
                 for bubble in real_bubbles:
@@ -327,7 +327,7 @@ async def handle_message(client: Client, message):
         # SLOW-PATH: AI handles greeting and complex gender detection
         # =========================================================================
         session.add_message("user", text)
-        bubbles = await call_gemini(session.get_history(), get_wib_time(), "WAITING_MATCH")
+        bubbles = await call_gemini(session.get_history(), get_wib_time())
 
         # Fallback if 429 rate limit happens (bubbles is empty)
         if not bubbles:
