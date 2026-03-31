@@ -69,14 +69,13 @@ async def warm_up_persona() -> bool:
         return False
 
 
-async def generate_reply(history: list, current_time: str, session_state: str = "CHATTING") -> list[str]:
+async def generate_reply(history: list, current_time: str) -> list[str]:
     """
     Generate a reply using Groq API with HVM persona.
 
     Args:
         history: List of dicts with {"role": "user"/"model", "content": "..."}
         current_time: Current time in "HH:MM" format (24-hour, WIB)
-        session_state: Current session state ("WAITING_MATCH" or "CHATTING") for cache isolation
 
     Returns:
         List of strings (each string is one chat bubble)
