@@ -56,7 +56,7 @@ async def call_gemini(history: list, current_time: str, session_state: str = "CH
         await asyncio.sleep(random.uniform(GEMINI_REQUEST_DELAY_MIN, GEMINI_REQUEST_DELAY_MAX))
 
         session.last_gemini_request_time = time.time()
-        return generate_reply(history, current_time, session_state)
+        return await generate_reply(history, current_time, session_state)
 
 
 async def _handle_bubbles(client: Client, chat_id: int, bubbles: list):
@@ -393,11 +393,11 @@ async def main():
         global generate_reply
         generate_reply = _generate_reply
 
-        ok = await asyncio.get_event_loop().run_in_executor(None, warm_up_persona)
+        ok = await warm_up_persona()
         if not ok:
-            logger.warning("⚠️  Gemini warm-up failed, continuing anyway...")
+            logger.warning("⚠️  Groq warm-up failed, continuing anyway...")
         else:
-            logger.info("✅ Gemini siap — persona dipahami, mulai otomasi Telegram...")
+            logger.info("✅ Groq siap — persona dipahami, mulai otomasi Telegram...")
 
         try:
             # Send initial /next to all anonymous chat bots to start searching
