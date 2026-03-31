@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 from config import GROQ_API_KEY, GROQ_MODEL, MAX_HISTORY
 import logging
 import time
@@ -30,11 +30,11 @@ except FileNotFoundError:
 # Combine persona and workflow as system instruction
 SYSTEM_PROMPT = PERSONA + "\n\n---\n\n" + WORKFLOW
 
-# Initialize Groq client (OpenAI-compatible)
-client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+# Initialize Groq client (OpenAI-compatible) with built-in retries
+client = AsyncOpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1", max_retries=2)
 
 
-def warm_up_persona() -> bool:
+async def warm_up_persona() -> bool:
     """
     Ask Gemini to read and confirm understanding of persona before starting.
     Returns True if Gemini confirms, False if failed.
@@ -44,7 +44,7 @@ def warm_up_persona() -> bool:
         return False
 
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -55,7 +55,9 @@ def warm_up_persona() -> bool:
                     "3) gaya chat kamu seperti apa, 4) aturan keras yang harus kamu ikuti. "
                     "Jawab dalam 4-5 kalimat singkat."
                 )}
-            ]
+            ],
+            max_tokens=250,
+            temperature=0.7
         )
         summary = response.choices[0].message.content.strip()
         logger.info("✅ Groq persona confirmed:")
@@ -69,7 +71,7 @@ def warm_up_persona() -> bool:
         return False
 
 
-def generate_reply(history: list, current_time: str, session_state: str = "CHATTING") -> list[str]:
+async def generate_reply(history: list, current_time: str, session_state: str = "CHATTING") -> list[str]:
     """
     Generate a reply using Groq API with HVM persona.
 
@@ -109,9 +111,11 @@ def generate_reply(history: list, current_time: str, session_state: str = "CHATT
             role = "user" if item["role"] == "user" else "assistant"
             messages.append({"role": role, "content": item["content"]})
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=GROQ_MODEL,
-            messages=messages
+            messages=messages,
+            max_tokens=250,
+            temperature=0.7
         )
 
         reply_text = response.choices[0].message.content
@@ -141,35 +145,16 @@ def generate_reply(history: list, current_time: str, session_state: str = "CHATT
 
     except Exception as e:
         err = str(e).lower()
-        if "429" in err or "rate limit" in err:
+        if "rate limit" in err or "429" in err:
             logger.warning("⚠️  Groq rate limit hit, skipping reply")
             return []
-        # Retry once on connection errors (timeout, server disconnect)
-        if any(k in err for k in ["disconnected", "timeout", "server disconnected", "connection"]):
-            logger.warning("⚠️  Groq connection error, retrying once... (%s)", err[:60])
-            try:
-                response = client.chat.completions.create(
-                    model=GROQ_MODEL,
-                    messages=messages
-                )
-                bubbles = [
-                    line.strip() for line in response.choices[0].message.content.split("\n")
-                    if line.strip() and not line.strip().startswith("[CONTEXT:")
-                ]
-                # Cache the response
-                if len(_response_cache) >= _cache_max_size:
-                    _response_cache.pop(next(iter(_response_cache)))
-                _response_cache[cache_key] = bubbles
-                logger.info(f"✓ Retry successful, {len(bubbles)} bubbles")
-                return bubbles
-            except Exception as e2:
-                logger.error(f"❌ Groq retry failed: {e2}")
-                return []
         logger.error(f"❌ Groq API error: {e}")
         return []
 
 
 if __name__ == "__main__":
+    import asyncio
+
     test_history = [
         {"role": "user", "content": "hii"},
         {"role": "model", "content": "hii"},
@@ -177,7 +162,7 @@ if __name__ == "__main__":
     ]
 
     print("\n=== Testing Groq Client ===")
-    replies = generate_reply(test_history, "21:00")
+    replies = asyncio.run(generate_reply(test_history, "21:00"))
     print("\nGenerated reply bubbles:")
     for i, bubble in enumerate(replies, 1):
         print(f"{i}. {bubble}")
