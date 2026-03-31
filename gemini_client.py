@@ -119,10 +119,26 @@ async def generate_reply(history: list, current_time: str, session_state: str = 
         )
 
         reply_text = response.choices[0].message.content
-        bubbles = [
-            line.strip() for line in reply_text.split("\n")
-            if line.strip() and not line.strip().startswith("[CONTEXT:")
-        ]
+        raw_bubbles = [line.strip() for line in reply_text.split("\n") if line.strip()]
+
+        bubbles = []
+        for b in raw_bubbles:
+            # Lewati indikator waktu
+            if b.startswith("[CONTEXT:"):
+                continue
+
+            b_lower = b.lower()
+            # Blokir format kurung penuh (seperti [Format Pesan], [Bubbles], atau teks sistem)
+            if b.startswith("[") and b.endswith("]") and b_lower not in ["[skip]", "[start_chat]"]:
+                logger.warning(f"⚠️ Memblokir halusinasi AI (kurung): {b}")
+                continue
+
+            # Blokir secara hardcoded jika mengandung kata kunci halusinasi yang persis
+            if "[bubbles]" in b_lower or "[format pesan]" in b_lower or "menemukan pasangan" in b_lower or "pasangan telah ditemukan" in b_lower:
+                logger.warning(f"⚠️ Memblokir halusinasi AI spesifik: {b}")
+                continue
+
+            bubbles.append(b)
 
         # SAFETY CHECK: Detect conflicting control tokens
         has_skip = any(b == "[SKIP]" for b in bubbles)
